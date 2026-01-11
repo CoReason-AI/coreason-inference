@@ -12,7 +12,7 @@ from typing import List
 
 import pandas as pd
 from dowhy import CausalModel
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from coreason_inference.schema import InterventionResult
 from coreason_inference.utils.logger import logger
@@ -39,6 +39,7 @@ class CausalEstimator:
         outcome: str,
         confounders: List[str],
         patient_id_col: str = "patient_id",
+        treatment_is_binary: bool = False,
     ) -> InterventionResult:
         """
         Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
@@ -48,6 +49,7 @@ class CausalEstimator:
             outcome: The column name of the outcome variable.
             confounders: A list of column names representing confounding variables.
             patient_id_col: The column name for patient IDs (used for result mapping).
+            treatment_is_binary: Set to True if the treatment variable is binary (0/1).
 
         Returns:
             InterventionResult: The estimated effect and refutation status.
@@ -70,6 +72,11 @@ class CausalEstimator:
         # Note: We use a linear model for the DML components for simplicity and robustness in this atomic unit.
         # EconML requires passing the estimator classes, not instances, for some args, or valid strings.
         # "backdoor.econml.dml.LinearDML" is the method name in dowhy.
+
+        # Configure estimator based on treatment type
+        # For discrete treatment, use LogisticRegression for model_t
+        model_t = LogisticRegression() if treatment_is_binary else LinearRegression()
+
         try:
             estimate = model.estimate_effect(
                 identified_estimand,
@@ -77,8 +84,8 @@ class CausalEstimator:
                 method_params={
                     "init_params": {
                         "model_y": LinearRegression(),
-                        "model_t": LinearRegression(),
-                        "discrete_treatment": False,  # Assuming continuous for general case, can be adjusted
+                        "model_t": model_t,
+                        "discrete_treatment": treatment_is_binary,
                         "random_state": 42,
                     },
                     "fit_params": {},
