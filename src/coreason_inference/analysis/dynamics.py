@@ -35,8 +35,8 @@ class ODEFunc(nn.Module):  # type: ignore
         # In a more complex version, this could be an MLP.
         # Bias is enabled to handle data shifted by StandardScaler (y' = Wy + b)
         self.linear = nn.Linear(input_dim, input_dim, bias=True)
-        # Initialize with small weights to prevent divergence early on
-        nn.init.normal_(self.linear.weight, mean=0.0, std=0.1)
+        # Initialize with larger weights to help convergence to interaction terms (target ~ 1.0)
+        nn.init.normal_(self.linear.weight, mean=0.0, std=0.3)
         nn.init.constant_(self.linear.bias, 0.0)
 
     def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
