@@ -15,6 +15,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
 from coreason_inference.schema import CausalGraph, CausalNode, LoopType
@@ -32,9 +33,11 @@ class ODEFunc(nn.Module):  # type: ignore
         super().__init__()
         # Use a single linear layer to capture dependencies (Jacobian ~ Weight Matrix)
         # In a more complex version, this could be an MLP.
-        self.linear = nn.Linear(input_dim, input_dim, bias=False)
+        # Bias is enabled to handle data shifted by StandardScaler (y' = Wy + b)
+        self.linear = nn.Linear(input_dim, input_dim, bias=True)
         # Initialize with small weights to prevent divergence early on
         nn.init.normal_(self.linear.weight, mean=0.0, std=0.1)
+        nn.init.constant_(self.linear.bias, 0.0)
 
     def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
@@ -55,6 +58,7 @@ class DynamicsEngine:
         self.method = method
         self.model: Optional[ODEFunc] = None
         self.variable_names: List[str] = []
+        self.scaler: Optional[StandardScaler] = None
 
     def fit(self, data: pd.DataFrame, time_col: str, variable_cols: List[str]) -> None:
         """
@@ -65,14 +69,33 @@ class DynamicsEngine:
             time_col: Name of the column representing time.
             variable_cols: List of column names representing the variables (nodes).
         """
+        if data.empty:
+            raise ValueError("Input data is empty.")
+
+        if data.isnull().values.any():
+            raise ValueError("Input data contains NaN values.")
+
         logger.info(f"Fitting DynamicsEngine to {len(variable_cols)} variables.")
         self.variable_names = variable_cols
 
-        # Prepare Tensors
+        # Prepare Data
         # Sort by time just in case
         df = data.sort_values(by=time_col)
-        t = torch.tensor(df[time_col].values, dtype=torch.float32)
-        y = torch.tensor(df[variable_cols].values, dtype=torch.float32)
+
+        # Check for sufficient data points
+        if len(df) < 2:
+            raise ValueError("Insufficient data points for time-series analysis (minimum 2 required).")
+
+        t_raw = df[time_col].values
+        y_raw = df[variable_cols].values
+
+        # Scaling: Normalize variables to mean 0, std 1
+        # This is critical for convergence when variables have different scales.
+        self.scaler = StandardScaler()
+        y_scaled = self.scaler.fit_transform(y_raw)
+
+        t = torch.tensor(t_raw, dtype=torch.float32)
+        y = torch.tensor(y_scaled, dtype=torch.float32)
 
         # Normalize time to start at 0
         t = t - t[0]
@@ -89,9 +112,6 @@ class DynamicsEngine:
             pred_y = odeint(self.model, y[0], t, method=self.method)
 
             # pred_y shape: (len(t), batch_size=1, dim) -> (len(t), dim)
-            # Or if y[0] is 1D, output is (len(t), dim).
-            # Ensure shapes match
-
             loss = torch.mean((pred_y - y) ** 2)
             loss.backward()
             optimizer.step()
@@ -115,9 +135,6 @@ class DynamicsEngine:
             raise ValueError("Model has not been fitted yet.")
 
         # Extract weights as adjacency matrix
-        # Weight W_ij connects input j to output i (in PyTorch Linear layer: y = xA^T + b)
-        # The weight matrix in nn.Linear is (out_features, in_features).
-        # element [i, j] is weight from input j to output i.
         weights = self.model.linear.weight.detach().numpy()
 
         # Log weights for debugging
@@ -134,9 +151,6 @@ class DynamicsEngine:
             nodes.append(CausalNode(id=name, codex_concept_id=concept_id, is_latent=False))
 
         # Detect Edges and Loops
-        # A loop exists if A -> B and B -> A (Cycle length 2)
-        # or A -> A (Self-loop)
-
         # 1. Identify Edges
         adj_matrix = np.zeros_like(weights)
         for i in range(len(self.variable_names)):  # Target
@@ -144,7 +158,7 @@ class DynamicsEngine:
                 w = weights[i, j]
                 if abs(w) > threshold:
                     edges.append((self.variable_names[j], self.variable_names[i]))
-                    adj_matrix[i, j] = w  # i depends on j
+                    adj_matrix[i, j] = w
 
         # 2. simple loop detection (Length 2 and Self-loops)
 

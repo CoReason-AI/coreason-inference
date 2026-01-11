@@ -11,6 +11,8 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
+from torchdiffeq import odeint as torch_odeint
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.schema import CausalGraph, CausalNode, LoopType
@@ -36,26 +38,25 @@ def cyclic_data() -> pd.DataFrame:
     dy2/dt = -y1 - 0.5*y2
     Jacobian: [[0, 1], [-1, -0.5]]
     """
-    t = np.linspace(0, 10, 200)  # More points
-    y1_vals = []
-    y2_vals = []
+    t = torch.linspace(0, 10, 100)
+    y0 = torch.tensor([0.0, 1.0])
 
-    # Simulate manually to ensure correct data
-    dt = t[1] - t[0]
-    y1 = 0.0
-    y2 = 1.0
+    class TrueDynamics(torch.nn.Module):  # type: ignore
+        def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+            # y is [y1, y2]
+            dydt = torch.zeros_like(y)
+            dydt[0] = y[1]
+            dydt[1] = -y[0] - 0.5 * y[1]
+            return dydt
 
-    for _ in t:
-        y1_vals.append(y1)
-        y2_vals.append(y2)
+    with torch.no_grad():
+        y_true = torch_odeint(TrueDynamics(), y0, t, method="dopri5")
 
-        dy1 = y2
-        dy2 = -y1 - 0.5 * y2
+    y1_vals = y_true[:, 0].numpy()
+    y2_vals = y_true[:, 1].numpy()
+    t_vals = t.numpy()
 
-        y1 += dy1 * dt
-        y2 += dy2 * dt
-
-    return pd.DataFrame({"time": t, "y1": y1_vals, "y2": y2_vals})
+    return pd.DataFrame({"time": t_vals, "y1": y1_vals, "y2": y2_vals})
 
 
 def test_dynamics_fit_acyclic(acyclic_data: pd.DataFrame) -> None:
@@ -105,6 +106,11 @@ def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
         if "y1" in path and "y2" in path and len(path) == 3:
             has_loop = True
             assert loop["type"] == LoopType.NEGATIVE_FEEDBACK.value
+
+    # Debug info if failed
+    if not has_loop:
+        print(f"Detected Loops: {graph.loop_dynamics}")
+        # We can also inspect weights if we had access, but checking loops is sufficient for assertion
 
     assert has_loop, f"Failed to detect feedback loop. Found loops: {graph.loop_dynamics}"
 
