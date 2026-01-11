@@ -104,3 +104,68 @@ def test_serialization() -> None:
 
     node_loaded = CausalNode.model_validate_json(json_str)
     assert node_loaded == node
+
+
+def test_graph_integrity_duplicates() -> None:
+    """Test that graph rejects duplicate node IDs."""
+    node1 = CausalNode(id="A", codex_concept_id=1, is_latent=False)
+    node2 = CausalNode(id="A", codex_concept_id=2, is_latent=True)  # Duplicate ID
+
+    with pytest.raises(ValidationError) as excinfo:
+        CausalGraph(
+            nodes=[node1, node2],
+            edges=[],
+            loop_dynamics=[],
+            stability_score=1.0,
+        )
+    assert "Duplicate node IDs found in graph" in str(excinfo.value)
+
+
+def test_graph_integrity_dangling_edges() -> None:
+    """Test that graph rejects edges pointing to non-existent nodes."""
+    node1 = CausalNode(id="A", codex_concept_id=1, is_latent=False)
+
+    # Edge A->B where B does not exist
+    with pytest.raises(ValidationError) as excinfo:
+        CausalGraph(
+            nodes=[node1],
+            edges=[("A", "B")],
+            loop_dynamics=[],
+            stability_score=1.0,
+        )
+    assert "Edge target 'B' not found" in str(excinfo.value)
+
+    # Edge C->A where C does not exist
+    with pytest.raises(ValidationError) as excinfo:
+        CausalGraph(
+            nodes=[node1],
+            edges=[("C", "A")],
+            loop_dynamics=[],
+            stability_score=1.0,
+        )
+    assert "Edge source 'C' not found" in str(excinfo.value)
+
+
+def test_graph_integrity_invalid_loops() -> None:
+    """Test that graph rejects loop paths referencing non-existent nodes."""
+    node1 = CausalNode(id="A", codex_concept_id=1, is_latent=False)
+
+    # Loop path involves 'B' which does not exist
+    with pytest.raises(ValidationError) as excinfo:
+        CausalGraph(
+            nodes=[node1],
+            edges=[],
+            loop_dynamics=[{"path": ["A", "B"], "type": "NEGATIVE"}],
+            stability_score=1.0,
+        )
+    assert "Loop path node 'B' not found" in str(excinfo.value)
+
+    # Loop path is not a list
+    with pytest.raises(ValidationError) as excinfo:
+        CausalGraph(
+            nodes=[node1],
+            edges=[],
+            loop_dynamics=[{"path": "A->B", "type": "NEGATIVE"}],
+            stability_score=1.0,
+        )
+    assert "Loop path must be a list" in str(excinfo.value)
