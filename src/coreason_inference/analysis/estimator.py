@@ -14,7 +14,7 @@ import pandas as pd
 from dowhy import CausalModel
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from coreason_inference.schema import InterventionResult
+from coreason_inference.schema import InterventionResult, RefutationStatus
 from coreason_inference.utils.logger import logger
 
 
@@ -114,7 +114,7 @@ class CausalEstimator:
         # So if it IS significant, the placebo test FAILED (we found an effect where there should be none).
         # If it is NOT significant, the placebo test PASSED.
 
-        status = "FAILED" if refutation_passed else "PASSED"
+        status = RefutationStatus.FAILED if refutation_passed else RefutationStatus.PASSED
         logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
 
         # Construct InterventionResult

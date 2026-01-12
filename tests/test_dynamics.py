@@ -13,10 +13,11 @@ import math
 import pandas as pd
 import pytest
 import torch
+from pydantic import ValidationError
 from torchdiffeq import odeint as torch_odeint
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
-from coreason_inference.schema import CausalGraph, CausalNode, LoopType
+from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
 
 
 @pytest.fixture
@@ -90,8 +91,9 @@ def test_dynamics_fit_acyclic(acyclic_data: pd.DataFrame) -> None:
     # Should detect negative self-loop (decay)
     assert len(graph.loop_dynamics) >= 1
     loop = graph.loop_dynamics[0]
-    assert loop["path"] == ["variable_a", "variable_a"]
-    assert loop["type"] == LoopType.NEGATIVE_FEEDBACK.value
+    # Check using object attributes, not dictionary keys
+    assert loop.path == ["variable_a", "variable_a"]
+    assert loop.type == LoopType.NEGATIVE_FEEDBACK
 
 
 def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
@@ -115,11 +117,11 @@ def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
     # Check for feedback loop (y1 <-> y2)
     has_loop = False
     for loop in graph.loop_dynamics:
-        path = loop["path"]
+        path = loop.path
         # Look for cycle y1->y2->y1
         if "y1" in path and "y2" in path and len(path) == 3:
             has_loop = True
-            assert loop["type"] == LoopType.NEGATIVE_FEEDBACK.value
+            assert loop.type == LoopType.NEGATIVE_FEEDBACK
 
     # Debug info if failed
     if not has_loop:
@@ -148,24 +150,27 @@ def test_graph_validation() -> None:
     node_a = CausalNode(id="A", codex_concept_id=1, is_latent=False)
 
     # 1. Duplicate IDs
-    with pytest.raises(ValueError, match="Duplicate node IDs"):
+    # Updated match string to match actual error
+    with pytest.raises(ValueError, match="Duplicate node ID found: 'A'"):
         CausalGraph(nodes=[node_a, node_a], edges=[], loop_dynamics=[], stability_score=0.0)
 
     # 2. Edge referencing unknown node
-    with pytest.raises(ValueError, match="Edge source 'B' not found"):
+    with pytest.raises(ValueError, match="Edge source node 'B' not found"):
         CausalGraph(nodes=[node_a], edges=[("B", "A")], loop_dynamics=[], stability_score=0.0)
 
     # 3. Loop path integrity
-    with pytest.raises(ValueError, match="Loop path node 'B' not found"):
-        CausalGraph(
-            nodes=[node_a], edges=[], loop_dynamics=[{"path": ["A", "B", "A"], "type": "NEGATIVE"}], stability_score=0.0
-        )
+    # LoopDynamics must be valid (path length >= 2), but edge must fail
+    loop = LoopDynamics(path=["A", "B", "A"], type=LoopType.NEGATIVE_FEEDBACK)
+    with pytest.raises(ValueError, match=r"Loop path edge \('A', 'B'\) does not exist"):
+        CausalGraph(nodes=[node_a], edges=[], loop_dynamics=[loop], stability_score=0.0)
 
-    # 4. Loop path format
-    with pytest.raises(ValueError, match="Loop path must be a list"):
+    # 4. Loop path format is now handled by LoopDynamics type check
+    # But we can test LoopDynamics validation independently or via graph
+    # If we pass a dict to loop_dynamics in constructor, Pydantic should raise a validation error
+    with pytest.raises(ValidationError):  # Catch Pydantic validation error explicitly
         CausalGraph(
             nodes=[node_a],
             edges=[],
-            loop_dynamics=[{"path": "NOT_A_LIST", "type": "NEGATIVE"}],
+            loop_dynamics=[{"path": "NOT_A_LIST", "type": "NEGATIVE"}],  # type: ignore
             stability_score=0.0,
         )

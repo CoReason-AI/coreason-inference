@@ -11,6 +11,12 @@ packages = [{include = "coreason_inference", from = "src"}]
 python = ">=3.12, <3.14"
 loguru = "^0.7.2"
 pydantic = "^2.12.5"
+pandas = "^2.3.3"
+torch = "^2.9.1"
+torchdiffeq = "^0.2.5"
+dowhy = "^0.14"
+econml = "^0.16.0"
+scikit-learn = "<1.7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
