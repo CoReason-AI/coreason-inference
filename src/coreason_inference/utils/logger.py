@@ -13,11 +13,8 @@ from pathlib import Path
 
 from loguru import logger
 
-__all__ = ["logger", "setup_logging"]
-
 
 def setup_logging() -> None:
-    """Configure the logger with default sinks and formats."""
     # Remove default handler
     logger.remove()
 
@@ -49,5 +46,7 @@ def setup_logging() -> None:
     )
 
 
-# Initialize logger on import
+# Initialize logging on import
 setup_logging()
+
+__all__ = ["logger", "setup_logging"]

@@ -16,7 +16,7 @@ from pydantic import BaseModel, model_validator
 
 class LoopType(str, Enum):
     """
-    Enum representing the type of feedback loop in a causal graph.
+    Defines the type of feedback loop in the causal graph.
     """
 
     POSITIVE_FEEDBACK = "POSITIVE"  # Runaway (Cancer/Cytokine Storm)
@@ -29,14 +29,14 @@ class CausalNode(BaseModel):
     Represents a node in the causal graph.
     """
 
-    id: str
+    id: str  # "variable_alt_level"
     codex_concept_id: int  # Linked to Ontology
     is_latent: bool  # True if discovered by VAE
 
 
 class CausalGraph(BaseModel):
     """
-    Represents the causal graph structure including nodes, edges, and dynamics.
+    Represents the entire causal graph structure, including nodes, edges, and dynamic loops.
     """
 
     nodes: List[CausalNode]
@@ -45,39 +45,19 @@ class CausalGraph(BaseModel):
     stability_score: float
 
     @model_validator(mode="after")
-    def check_graph_integrity(self) -> "CausalGraph":
-        """
-        Validates the integrity of the graph structure.
-        Ensures all nodes have unique IDs and that edges/loops refer to existing nodes.
-        """
+    def check_edges_reference_existing_nodes(self) -> "CausalGraph":
         node_ids = {node.id for node in self.nodes}
-
-        # Check for duplicates
-        if len(node_ids) != len(self.nodes):
-            raise ValueError("Duplicate node IDs found in graph.")
-
-        # Check edges
-        for u, v in self.edges:
-            if u not in node_ids:
-                raise ValueError(f"Edge source '{u}' not found in nodes.")
-            if v not in node_ids:
-                raise ValueError(f"Edge target '{v}' not found in nodes.")
-
-        # Check loop dynamics
-        for loop in self.loop_dynamics:
-            path = loop.get("path", [])
-            if not isinstance(path, list):
-                raise ValueError("Loop path must be a list.")
-            for node_id in path:
-                if node_id not in node_ids:
-                    raise ValueError(f"Loop path node '{node_id}' not found in nodes.")
-
+        for source, target in self.edges:
+            if source not in node_ids:
+                raise ValueError(f"Edge source '{source}' not found in nodes.")
+            if target not in node_ids:
+                raise ValueError(f"Edge target '{target}' not found in nodes.")
         return self
 
 
 class InterventionResult(BaseModel):
     """
-    Represents the result of a causal intervention simulation.
+    Stores the result of a counterfactual intervention.
     """
 
     patient_id: str
