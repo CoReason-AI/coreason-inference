@@ -13,6 +13,8 @@ from pathlib import Path
 
 from loguru import logger
 
+__all__ = ["logger", "setup_logging"]
+
 
 def setup_logging() -> None:
     # Remove default handler
@@ -22,12 +24,8 @@ def setup_logging() -> None:
     logger.add(
         sys.stderr,
         level="INFO",
-        format=(
-            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-            "<level>{message}</level>"
-        ),
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
     )
 
     # Ensure logs directory exists
@@ -46,7 +44,5 @@ def setup_logging() -> None:
     )
 
 
-# Initialize logging on import
+# Initialize logging on module import
 setup_logging()
-
-__all__ = ["logger", "setup_logging"]
