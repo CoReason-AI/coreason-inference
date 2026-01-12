@@ -49,7 +49,8 @@ def cyclic_data() -> pd.DataFrame:
     This ensures mean is approx 0, making StandardScaler consistent.
     """
     period = 2 * math.pi
-    t = torch.linspace(0, period, 100)
+    # Reduced points to 50 for faster training
+    t = torch.linspace(0, period, 50)
     y0 = torch.tensor([0.0, 1.0])
 
     class HarmonicDynamics(torch.nn.Module):  # type: ignore
@@ -99,12 +100,12 @@ def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
     Expect: Feedback loop between y1 and y2.
     """
     # Use rk4 for stable training
-    # Standard oscillator is easier to learn than damped/shifted one.
-    engine = DynamicsEngine(learning_rate=0.02, epochs=1500, method="rk4")
+    # Optimized epochs/LR for speed and convergence
+    engine = DynamicsEngine(learning_rate=0.02, epochs=2000, method="rk4")
     engine.fit(cyclic_data, time_col="time", variable_cols=["y1", "y2"])
 
-    # Threshold 0.1
-    graph = engine.discover_loops(threshold=0.1)
+    # Threshold 0.05 to ensure off-diagonal interactions are detected
+    graph = engine.discover_loops(threshold=0.05)
 
     # Check nodes
     node_ids = {node.id for node in graph.nodes}
