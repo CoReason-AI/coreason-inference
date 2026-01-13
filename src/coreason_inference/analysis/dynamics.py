@@ -15,14 +15,13 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
+from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
-from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
-from coreason_inference.utils.logger import logger
 
-
-class ODEFunc(nn.Module):  # type: ignore
+class ODEFunc(nn.Module):
     """
     Neural ODE function approximating dy/dt = f(y).
     This module uses a linear layer to allow for straightforward Jacobian extraction
@@ -44,7 +43,7 @@ class ODEFunc(nn.Module):  # type: ignore
         Calculates the derivative dy/dt at time t.
         Neural ODEs often ignore 't' if the system is autonomous.
         """
-        return self.linear(y)
+        return self.linear(y)  # type: ignore
 
 
 class DynamicsEngine:
@@ -113,7 +112,7 @@ class DynamicsEngine:
 
             # pred_y shape: (len(t), batch_size=1, dim) -> (len(t), dim)
             loss = torch.mean((pred_y - y) ** 2)
-            loss.backward()
+            loss.backward()  # type: ignore
             optimizer.step()
 
             if epoch % 50 == 0:

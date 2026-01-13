@@ -13,11 +13,10 @@ import math
 import pandas as pd
 import pytest
 import torch
-from pydantic import ValidationError
-from torchdiffeq import odeint as torch_odeint
-
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
+from pydantic import ValidationError
+from torchdiffeq import odeint as torch_odeint
 
 
 @pytest.fixture
@@ -28,7 +27,7 @@ def acyclic_data() -> pd.DataFrame:
     t = torch.linspace(0, 5, 50)
     y0 = torch.tensor([10.0])
 
-    class DecayDynamics(torch.nn.Module):  # type: ignore
+    class DecayDynamics(torch.nn.Module):
         def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             return -0.5 * y
 
@@ -54,7 +53,7 @@ def cyclic_data() -> pd.DataFrame:
     t = torch.linspace(0, period, 50)
     y0 = torch.tensor([0.0, 1.0])
 
-    class HarmonicDynamics(torch.nn.Module):  # type: ignore
+    class HarmonicDynamics(torch.nn.Module):
         def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             # y is [y1, y2]
             dydt = torch.zeros_like(y)
