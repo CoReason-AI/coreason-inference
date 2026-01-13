@@ -10,6 +10,7 @@
 
 from typing import Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -80,6 +81,10 @@ class LatentMiner:
         if data.empty:
             raise ValueError("Input data is empty.")
 
+        # Robustness check: NaNs or Infs
+        if data.isnull().values.any() or np.isinf(data.values).any():
+            raise ValueError("Input data contains NaN or infinite values.")
+
         # Preprocessing
         self.input_dim = data.shape[1]
         X_scaled = self.scaler.fit_transform(data.values)
@@ -128,6 +133,9 @@ class LatentMiner:
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
+
+        if data.isnull().values.any() or np.isinf(data.values).any():
+            raise ValueError("Input data contains NaN or infinite values.")
 
         # Preprocessing
         X_scaled = self.scaler.transform(data.values)
