@@ -78,3 +78,10 @@ class InterventionResult(BaseModel):
     counterfactual_outcome: float
     confidence_interval: Tuple[float, float]
     refutation_status: RefutationStatus
+
+
+class ExperimentProposal(BaseModel):
+    target: str = Field(..., description="The target variable to intervene on (e.g., 'Gene_A')")
+    action: str = Field(..., description="The action to perform (e.g., 'CRISPR_Knockout')")
+    confidence_gain: str = Field(..., description="Expected confidence gain (e.g., 'High')")
+    rationale: str = Field(..., description="Explanation for the experiment (e.g., 'Resolve direction A-B')")
