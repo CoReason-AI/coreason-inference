@@ -18,7 +18,7 @@ import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
-from coreason_inference.schema import CausalGraph, CausalNode, LoopType
+from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
 from coreason_inference.utils.logger import logger
 
 
@@ -169,7 +169,7 @@ class DynamicsEngine:
                 # If negative, it's negative feedback (stabilizing)
                 loop_type = LoopType.NEGATIVE_FEEDBACK if w < 0 else LoopType.POSITIVE_FEEDBACK
                 loop_dynamics.append(
-                    {"path": [self.variable_names[i], self.variable_names[i]], "type": loop_type.value}
+                    LoopDynamics(path=[self.variable_names[i], self.variable_names[i]], type=loop_type)
                 )
 
         # Length-2 loops
@@ -187,10 +187,10 @@ class DynamicsEngine:
                     loop_type = LoopType.NEGATIVE_FEEDBACK if is_negative else LoopType.POSITIVE_FEEDBACK
 
                     loop_dynamics.append(
-                        {
-                            "path": [self.variable_names[i], self.variable_names[j], self.variable_names[i]],
-                            "type": loop_type.value,
-                        }
+                        LoopDynamics(
+                            path=[self.variable_names[i], self.variable_names[j], self.variable_names[i]],
+                            type=loop_type,
+                        )
                     )
 
         # Stability Score (Eigenvalues of Jacobian)
