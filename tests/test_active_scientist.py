@@ -33,11 +33,12 @@ def synthetic_data() -> pd.DataFrame:
     np.random.seed(42)
     n = 1000
     a = np.random.randn(n)
-    b = 0.5 * a + np.random.randn(n) * 0.1 # Strong correlation
+    b = 0.5 * a + np.random.randn(n) * 0.1  # Strong correlation
     c = 0.5 * b + np.random.randn(n) * 0.1
 
-    df = pd.DataFrame({'A': a, 'B': b, 'C': c})
+    df = pd.DataFrame({"A": a, "B": b, "C": c})
     return df
+
 
 def test_active_scientist_fit(synthetic_data: pd.DataFrame) -> None:
     """Test that ActiveScientist fits without error."""
@@ -45,6 +46,7 @@ def test_active_scientist_fit(synthetic_data: pd.DataFrame) -> None:
     scientist.fit(synthetic_data)
     assert scientist.cpdag is not None
     assert scientist.cpdag.shape == (3, 3)
+
 
 def test_active_scientist_proposals(synthetic_data: pd.DataFrame) -> None:
     """
@@ -68,17 +70,20 @@ def test_active_scientist_proposals(synthetic_data: pd.DataFrame) -> None:
     # Since we iterate, we likely see 'A' (for A-B) and 'B' (for B-C).
 
     # Verify we have found ambiguities
-    assert 'A' in targets or 'B' in targets
+    assert "A" in targets or "B" in targets
+
 
 def test_empty_data_error() -> None:
     scientist = ActiveScientist()
     with pytest.raises(ValueError, match="Input data is empty"):
         scientist.fit(pd.DataFrame())
 
+
 def test_propose_without_fit() -> None:
     scientist = ActiveScientist()
     with pytest.raises(ValueError, match="Model not fitted"):
         scientist.propose_experiments()
+
 
 def test_pc_algorithm_failure(synthetic_data: pd.DataFrame) -> None:
     """Test exception handling when PC algorithm fails."""
