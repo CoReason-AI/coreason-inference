@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-
 from coreason_inference.analysis.latent import CausalVAE, LatentMiner
 
 
@@ -68,15 +67,11 @@ class TestLatentMiner:
         x2 = z_true[:, 0] - z_true[:, 1] + np.random.normal(0, 0.1, n_samples)
         x3 = z_true[:, 1] * 2 + np.random.normal(0, 0.1, n_samples)
 
-        df = pd.DataFrame({
-            "x1": x1,
-            "x2": x2,
-            "x3": x3
-        })
+        df = pd.DataFrame({"x1": x1, "x2": x2, "x3": x3})
         return df
 
     def test_fit_and_discover(self, sample_data: pd.DataFrame) -> None:
-        miner = LatentMiner(latent_dim=2, epochs=50) # Low epochs for speed
+        miner = LatentMiner(latent_dim=2, epochs=50)  # Low epochs for speed
 
         # Test Fit
         miner.fit(sample_data)

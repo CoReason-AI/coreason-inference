@@ -21,7 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
 
-class ODEFunc(nn.Module):
+class ODEFunc(nn.Module):  # type: ignore[misc]
     """
     Neural ODE function approximating dy/dt = f(y).
     This module uses a linear layer to allow for straightforward Jacobian extraction
@@ -43,7 +43,7 @@ class ODEFunc(nn.Module):
         Calculates the derivative dy/dt at time t.
         Neural ODEs often ignore 't' if the system is autonomous.
         """
-        return self.linear(y)  # type: ignore
+        return self.linear(y)
 
 
 class DynamicsEngine:
@@ -112,7 +112,7 @@ class DynamicsEngine:
 
             # pred_y shape: (len(t), batch_size=1, dim) -> (len(t), dim)
             loss = torch.mean((pred_y - y) ** 2)
-            loss.backward()  # type: ignore
+            loss.backward()
             optimizer.step()
 
             if epoch % 50 == 0:

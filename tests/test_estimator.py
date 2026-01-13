@@ -8,11 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 import pytest
 from coreason_inference.analysis.estimator import CausalEstimator
-from unittest.mock import MagicMock, patch
+
 
 def test_estimator_linear_synthetic() -> None:
     # Synthetic Data: Y = T + 2*X + Noise
@@ -90,10 +92,7 @@ def test_refutation_failure_flag() -> None:
         # Mock refuter to return significant p-value (low p-value = refutation failed to be null)
         mock_refute = MagicMock()
         # is_statistically_significant = True means p-value < alpha -> Refutation Failed
-        mock_refute.refutation_result = {
-            "p_value": 0.01,
-            "is_statistically_significant": True
-        }
+        mock_refute.refutation_result = {"p_value": 0.01, "is_statistically_significant": True}
         mock_instance.refute_estimate.return_value = mock_refute
 
         estimator = CausalEstimator(df)

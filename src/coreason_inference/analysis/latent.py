@@ -18,7 +18,7 @@ from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
 
 
-class CausalVAE(nn.Module):
+class CausalVAE(nn.Module):  # type: ignore[misc]
     def __init__(self, input_dim: int, hidden_dim: int = 32, latent_dim: int = 5):
         super().__init__()
         # Encoder
@@ -111,7 +111,7 @@ class LatentMiner:
             # Total Loss
             loss = recon_loss + self.beta * kld_loss
 
-            loss.backward()  # type: ignore
+            loss.backward()
 
             optimizer.step()
 
