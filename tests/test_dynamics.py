@@ -10,6 +10,7 @@
 
 import math
 
+import numpy as np
 import pandas as pd
 import pytest
 import torch
@@ -28,7 +29,7 @@ def acyclic_data() -> pd.DataFrame:
     t = torch.linspace(0, 5, 50)
     y0 = torch.tensor([10.0])
 
-    class DecayDynamics(torch.nn.Module):  # type: ignore
+    class DecayDynamics(torch.nn.Module):  # type: ignore[misc]
         def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             return -0.5 * y
 
@@ -54,7 +55,7 @@ def cyclic_data() -> pd.DataFrame:
     t = torch.linspace(0, period, 50)
     y0 = torch.tensor([0.0, 1.0])
 
-    class HarmonicDynamics(torch.nn.Module):  # type: ignore
+    class HarmonicDynamics(torch.nn.Module):  # type: ignore[misc]
         def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             # y is [y1, y2]
             dydt = torch.zeros_like(y)
@@ -77,6 +78,8 @@ def test_dynamics_fit_acyclic(acyclic_data: pd.DataFrame) -> None:
     Test fitting on a simple acyclic decay system.
     Expect: Self-loop with negative weight (decay).
     """
+    torch.manual_seed(42)
+    np.random.seed(42)
     # Use rk4 for fixed step training
     engine = DynamicsEngine(learning_rate=0.05, epochs=800, method="rk4")
     engine.fit(acyclic_data, time_col="time", variable_cols=["variable_a"])
@@ -101,9 +104,12 @@ def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
     Test fitting on a cyclic system (Harmonic Oscillator).
     Expect: Feedback loop between y1 and y2.
     """
+    torch.manual_seed(42)
+    np.random.seed(42)
     # Use rk4 for stable training
     # Optimized epochs/LR for speed and convergence
-    engine = DynamicsEngine(learning_rate=0.02, epochs=2000, method="rk4")
+    # Increased epochs slightly to 2500 to ensure convergence
+    engine = DynamicsEngine(learning_rate=0.02, epochs=2500, method="rk4")
     engine.fit(cyclic_data, time_col="time", variable_cols=["y1", "y2"])
 
     # Threshold 0.05 to ensure off-diagonal interactions are detected

@@ -22,7 +22,7 @@ from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, Loo
 from coreason_inference.utils.logger import logger
 
 
-class ODEFunc(nn.Module):  # type: ignore
+class ODEFunc(nn.Module):  # type: ignore[misc]
     """
     Neural ODE function approximating dy/dt = f(y).
     This module uses a linear layer to allow for straightforward Jacobian extraction
