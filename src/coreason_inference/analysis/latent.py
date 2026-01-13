@@ -14,8 +14,9 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
+
+from coreason_inference.utils.logger import logger
 
 
 class CausalVAE(nn.Module):  # type: ignore[misc]

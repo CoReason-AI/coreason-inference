@@ -13,10 +13,11 @@ import math
 import pandas as pd
 import pytest
 import torch
-from coreason_inference.analysis.dynamics import DynamicsEngine
-from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
 from pydantic import ValidationError
 from torchdiffeq import odeint as torch_odeint
+
+from coreason_inference.analysis.dynamics import DynamicsEngine
+from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
 
 
 @pytest.fixture
