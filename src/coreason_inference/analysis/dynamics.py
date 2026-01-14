@@ -53,6 +53,9 @@ class DynamicsEngine:
     """
 
     def __init__(self, learning_rate: float = 0.05, epochs: int = 500, method: str = "dopri5", l1_lambda: float = 0.0):
+        if l1_lambda < 0:
+            raise ValueError("l1_lambda must be non-negative.")
+
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.method = method
