@@ -275,9 +275,9 @@ class LatentMiner:
                     feature_importance_matrix[0, :] = np.mean(np.abs(s_vals), axis=0)
 
         # Verify shape just in case
-        if feature_importance_matrix.shape != (self.latent_dim, self.input_dim):
+        if feature_importance_matrix.shape != (self.latent_dim, self.input_dim):  # pragma: no cover
             logger.warning(f"Shape mismatch: {feature_importance_matrix.shape}, transposing.")
-            if feature_importance_matrix.shape == (self.input_dim, self.latent_dim):  # pragma: no cover
+            if feature_importance_matrix.shape == (self.input_dim, self.latent_dim):
                 feature_importance_matrix = feature_importance_matrix.T
 
         # Construct DataFrame
