@@ -52,10 +52,14 @@ class DynamicsEngine:
     The Dynamics Engine uses Neural ODEs to model system dynamics and discover feedback loops.
     """
 
-    def __init__(self, learning_rate: float = 0.05, epochs: int = 500, method: str = "dopri5"):
+    def __init__(self, learning_rate: float = 0.05, epochs: int = 500, method: str = "dopri5", l1_lambda: float = 0.0):
+        if l1_lambda < 0:
+            raise ValueError("l1_lambda must be non-negative.")
+
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.method = method
+        self.l1_lambda = l1_lambda
         self.model: Optional[ODEFunc] = None
         self.variable_names: List[str] = []
         self.scaler: Optional[StandardScaler] = None
@@ -112,14 +116,22 @@ class DynamicsEngine:
             pred_y = odeint(self.model, y[0], t, method=self.method)
 
             # pred_y shape: (len(t), batch_size=1, dim) -> (len(t), dim)
-            loss = torch.mean((pred_y - y) ** 2)
-            loss.backward()
+            mse_loss = torch.mean((pred_y - y) ** 2)
+
+            # Add L1 Regularization (Sparsity)
+            l1_loss = torch.tensor(0.0)
+            if self.l1_lambda > 0 and self.model is not None:
+                l1_loss = self.l1_lambda * torch.norm(self.model.linear.weight, p=1)
+
+            total_loss = mse_loss + l1_loss
+
+            total_loss.backward()
             optimizer.step()
 
             if epoch % 50 == 0:
-                logger.debug(f"Epoch {epoch}, Loss: {loss.item()}")
+                logger.debug(f"Epoch {epoch}, Loss: {total_loss.item()} (MSE: {mse_loss.item()}, L1: {l1_loss.item()})")
 
-        logger.info(f"Training complete. Final Loss: {loss.item()}")
+        logger.info(f"Training complete. Final Loss: {total_loss.item()}")
 
     def discover_loops(self, threshold: float = 0.1) -> CausalGraph:
         """
