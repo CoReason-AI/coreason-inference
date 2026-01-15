@@ -192,10 +192,47 @@ class TestLatentInterpretation:
         miner.fit(sample_data)
 
         # Manually verify encoder wrapper forward
-        # Access the internal wrapper definition? It's local.
-        # But we can verify `miner.model.encode_mu`
-
         x = torch.randn(10, 4)
         if miner.model:
             mu = miner.model.encode_mu(x)
             assert mu.shape == (10, latent_dim)
+
+    def test_shap_list_output(self, sample_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Explicitly test SHAP output as a list to ensure list handling coverage.
+        """
+        latent_dim = 2
+        input_dim = 4
+        miner = LatentMiner(latent_dim=latent_dim, epochs=1)
+        miner.fit(sample_data)
+
+        import shap
+
+        # List of length 2 (latent_dim), each element (N, features)
+        mock_vals = [np.ones((10, input_dim)) * 3 for _ in range(latent_dim)]
+
+        mock_explainer = MagicMock()
+        mock_explainer.shap_values.return_value = mock_vals
+        monkeypatch.setattr(shap, "DeepExplainer", lambda *args, **kwargs: mock_explainer)
+
+        df = miner.interpret_latents(sample_data, samples=10)
+        assert df.shape == (latent_dim, input_dim)
+        assert np.allclose(df.values, 3.0)
+
+    def test_background_sampling_logic(self, sample_data: pd.DataFrame) -> None:
+        """
+        Test the case where len(data) > samples to ensure sampling logic is hit.
+        """
+        # sample_data has 50 rows.
+        # Call with samples=10 -> should hit sampling logic
+        miner = LatentMiner(latent_dim=2, epochs=1)
+        miner.fit(sample_data)
+
+        # We just need it to run without error and perhaps verify shape
+        # The logic is internal, but coverage will track the 'if len > samples' block
+        df = miner.interpret_latents(sample_data, samples=10)
+        assert df.shape == (2, 4)
+
+        # Call with samples=100 (len(data) < samples) -> should hit 'else' block
+        df2 = miner.interpret_latents(sample_data, samples=100)
+        assert df2.shape == (2, 4)
