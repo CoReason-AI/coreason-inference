@@ -9,10 +9,12 @@
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from coreason_inference.analysis.latent import LatentMiner
 
@@ -103,3 +105,97 @@ class TestLatentInterpretation:
 
         assert isinstance(importance_df, pd.DataFrame)
         assert importance_df.shape == (2, 4)
+
+    def test_shap_output_shapes(self, sample_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Test various SHAP output shapes to cover array handling logic.
+        """
+        latent_dim = 2
+        input_dim = 4
+        miner = LatentMiner(latent_dim=latent_dim, epochs=1)
+        miner.fit(sample_data)
+
+        import shap
+
+        # 1. Test 3D array (N, Features, Latent) -> triggers transpose
+        # Shape: (10 samples, 4 features, 2 latents)
+        mock_vals_1 = np.ones((10, input_dim, latent_dim))
+
+        mock_explainer_1 = MagicMock()
+        mock_explainer_1.shap_values.return_value = mock_vals_1
+
+        monkeypatch.setattr(shap, "DeepExplainer", lambda *args, **kwargs: mock_explainer_1)
+
+        df1 = miner.interpret_latents(sample_data, samples=10)
+        assert df1.shape == (latent_dim, input_dim)
+        # Should be all 1s (mean of abs(1))
+        assert np.allclose(df1.values, 1.0)
+
+        # 2. Test 3D array (N, Latent, Features) -> standard
+        # Shape: (10 samples, 2 latents, 4 features)
+        mock_vals_2 = np.ones((10, latent_dim, input_dim)) * 2
+
+        mock_explainer_2 = MagicMock()
+        mock_explainer_2.shap_values.return_value = mock_vals_2
+
+        monkeypatch.setattr(shap, "DeepExplainer", lambda *args, **kwargs: mock_explainer_2)
+
+        df2 = miner.interpret_latents(sample_data, samples=10)
+        assert df2.shape == (latent_dim, input_dim)
+        assert np.allclose(df2.values, 2.0)
+
+    def test_unexpected_shap_shape(self, sample_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Test that unexpected SHAP shapes are logged and handled safely.
+        """
+        latent_dim = 2
+        input_dim = 4
+        miner = LatentMiner(latent_dim=latent_dim, epochs=1)
+        miner.fit(sample_data)
+
+        import shap
+
+        # Shape (10, 5, 5) - Doesn't match latent_dim or input_dim
+        mock_vals = np.zeros((10, 5, 5))
+
+        mock_explainer = MagicMock()
+        mock_explainer.shap_values.return_value = mock_vals
+        monkeypatch.setattr(shap, "DeepExplainer", lambda *args, **kwargs: mock_explainer)
+
+        # Should log error and return zero matrix
+        df = miner.interpret_latents(sample_data, samples=10)
+        assert df.shape == (latent_dim, input_dim)
+        assert df.sum().sum() == 0
+
+    def test_single_latent_array(self, sample_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test single latent variable returned as 2D array"""
+        # Latent dim = 1
+        miner = LatentMiner(latent_dim=1, epochs=1)
+        miner.fit(sample_data)
+
+        import shap
+
+        # (N, Features)
+        mock_vals = np.ones((10, 4))
+
+        mock_explainer = MagicMock()
+        mock_explainer.shap_values.return_value = mock_vals
+        monkeypatch.setattr(shap, "DeepExplainer", lambda *args, **kwargs: mock_explainer)
+
+        df = miner.interpret_latents(sample_data, samples=10)
+        assert df.shape == (1, 4)
+
+    def test_encoder_wrapper_coverage(self, sample_data: pd.DataFrame) -> None:
+        """Ensure EncoderWrapper is fully covered"""
+        latent_dim = 2
+        miner = LatentMiner(latent_dim=latent_dim, epochs=1)
+        miner.fit(sample_data)
+
+        # Manually verify encoder wrapper forward
+        # Access the internal wrapper definition? It's local.
+        # But we can verify `miner.model.encode_mu`
+
+        x = torch.randn(10, 4)
+        if miner.model:
+            mu = miner.model.encode_mu(x)
+            assert mu.shape == (10, latent_dim)

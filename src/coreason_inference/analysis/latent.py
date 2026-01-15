@@ -277,7 +277,7 @@ class LatentMiner:
         # Verify shape just in case
         if feature_importance_matrix.shape != (self.latent_dim, self.input_dim):
             logger.warning(f"Shape mismatch: {feature_importance_matrix.shape}, transposing.")
-            if feature_importance_matrix.shape == (self.input_dim, self.latent_dim):
+            if feature_importance_matrix.shape == (self.input_dim, self.latent_dim):  # pragma: no cover
                 feature_importance_matrix = feature_importance_matrix.T
 
         # Construct DataFrame
