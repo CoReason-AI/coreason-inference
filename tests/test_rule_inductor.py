@@ -66,6 +66,25 @@ def test_rule_inductor_fit(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray])
 
 
 def test_rule_inductor_induce(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+    """Test the main method (without data re-input) for coverage."""
+    features, cate = synthetic_cate_data
+    inductor = RuleInductor(max_depth=3, min_samples_leaf=10)
+    inductor.fit(features, cate)
+
+    # Call the original induce_rules method which relies on tree statistics (Mean CATE)
+    # instead of recalculating PoS from data.
+    result = inductor.induce_rules(cate)
+
+    assert isinstance(result, OptimizationOutput)
+    assert len(result.new_criteria) > 0
+    # Original Pos and Optimized Pos are placeholders or baselines in this method
+    assert result.original_pos == result.optimized_pos
+    # Should have a safety flag
+    assert len(result.safety_flags) > 0
+    assert "inaccurate without feature data" in result.safety_flags[0]
+
+
+def test_rule_inductor_induce_with_data(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
     features, cate = synthetic_cate_data
     inductor = RuleInductor(max_depth=3, min_samples_leaf=10)
     inductor.fit(features, cate)
@@ -111,7 +130,28 @@ def test_unfitted_error(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) ->
     features, cate = synthetic_cate_data
     inductor = RuleInductor()
     with pytest.raises(ValueError):
+        inductor.induce_rules(cate)
+    with pytest.raises(ValueError):
         inductor.induce_rules_with_data(features, cate)
+
+
+def test_non_numeric_features_pass() -> None:
+    """Test that non-numeric check just passes (coverage for line 59 pass)."""
+    # DecisionTreeRegressor actually fails if strings are passed, unless we encode.
+    # But our check logic had a `pass`. We should verify it doesn't crash BEFORE the model fit.
+    # However, if we pass strings, model.fit WILL crash.
+    # The coverage is for the `if not numeric: pass` block.
+
+    # We can mock `np.issubdtype` or just pass mixed types that sklearn might choke on later,
+    # but we want to hit the `pass` line.
+
+    df = pd.DataFrame({"A": ["a", "b"]})
+    cate = np.array([1, 2])
+    inductor = RuleInductor()
+
+    # It will raise ValueError from sklearn, but should hit our check first.
+    with pytest.raises(ValueError):  # ValueError: could not convert string to float
+        inductor.fit(df, cate)
 
 
 def test_no_valid_subgroup() -> None:
@@ -129,3 +169,10 @@ def test_no_valid_subgroup() -> None:
     # Even with noise, it might pick a leaf that is slightly better by chance.
     # But structure should be valid.
     assert isinstance(result, OptimizationOutput)
+
+    # Also test induce_rules (empty/fail case coverage)
+    # We need to simulate a tree where no leaf is better?
+    # Hard with random noise, as "best" is always >= others.
+    # The code handles "best_leaf_idx = -1" but that only happens if list is empty.
+    # A decision tree always has at least one leaf (root if no splits).
+    # So that branch might be dead code unless tree logic allows 0 nodes (impossible after fit).
