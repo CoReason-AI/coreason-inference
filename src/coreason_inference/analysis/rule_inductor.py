@@ -51,13 +51,6 @@ class RuleInductor:
 
         # Ensure features are numeric for Decision Tree
         # Note: We assume encoding is handled upstream or features are numeric.
-        # If not, we basic check.
-        # In this atomic unit, we assume numeric.
-        if not np.issubdtype(features.values.dtype, np.number):
-            # Simple check, might fail for object cols that are actually numbers
-            # We assume caller provides preprocessed data for now.
-            pass
-
         self.feature_names = list(features.columns)
 
         self.tree_model = DecisionTreeRegressor(
@@ -131,7 +124,7 @@ class RuleInductor:
                 max_cate_mean = mean_cate
                 best_leaf_idx = idx
 
-        if best_leaf_idx == -1:
+        if best_leaf_idx == -1:  # pragma: no cover
             # Should not happen unless tree is empty
             return OptimizationOutput(
                 new_criteria=[],
@@ -238,7 +231,7 @@ class RuleInductor:
                 max_pos = pos
                 best_leaf = leaf
 
-        if best_leaf == -1:
+        if best_leaf == -1:  # pragma: no cover
             return OptimizationOutput(
                 new_criteria=[],
                 original_pos=float(baseline_pos),
