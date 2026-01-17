@@ -11,7 +11,7 @@
 from typing import List, Optional
 
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
@@ -26,13 +26,12 @@ class InferenceResult(BaseModel):
     Container for the results of the full causal inference pipeline.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     graph: CausalGraph
     latents: pd.DataFrame = Field(..., description="Discovered latent variables (Z)")
     proposals: List[ExperimentProposal] = Field(default_factory=list)
     augmented_data: pd.DataFrame = Field(..., description="Original data + Latents")
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 class InferenceEngine:

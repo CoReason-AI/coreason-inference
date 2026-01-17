@@ -85,3 +85,17 @@ class ExperimentProposal(BaseModel):
     action: str = Field(..., description="The action to perform (e.g., 'CRISPR_Knockout')")
     confidence_gain: str = Field(..., description="Expected confidence gain (e.g., 'High')")
     rationale: str = Field(..., description="Explanation for the experiment (e.g., 'Resolve direction A-B')")
+
+
+class ProtocolRule(BaseModel):
+    feature: str = Field(..., description="The feature name (e.g., 'Albumin')")
+    operator: str = Field(..., description="The operator (e.g., '<', '>=')")
+    value: float = Field(..., description="The threshold value")
+    rationale: str = Field(..., description="Reason for this rule (e.g., 'High CATE driver')")
+
+
+class OptimizationOutput(BaseModel):
+    new_criteria: List[ProtocolRule]
+    original_pos: float = Field(..., description="Baseline Probability of Success / Response Rate")
+    optimized_pos: float = Field(..., description="Optimized Probability of Success in subgroup")
+    safety_flags: List[str] = Field(default_factory=list, description="List of safety warnings")
