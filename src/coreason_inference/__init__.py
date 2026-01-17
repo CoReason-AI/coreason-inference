@@ -1,4 +1,4 @@
-# Copyright (c) 2025 CoReason, Inc.
+# Copyright (c) 2026 CoReason, Inc.
 #
 # This software is proprietary and dual-licensed.
 # Licensed under the Prosperity Public License 3.0 (the "License").
@@ -8,14 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-"""
-coreason-inference
-"""
+from coreason_inference.engine import InferenceEngine, InferenceResult
 
-__version__ = "0.1.0"
-__author__ = "Gowtham A Rao"
-__email__ = "gowtham.rao@coreason.ai"
-
-from .main import hello_world
-
-__all__ = ["hello_world"]
+__all__ = ["InferenceEngine", "InferenceResult"]
