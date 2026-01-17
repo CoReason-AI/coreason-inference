@@ -126,6 +126,15 @@ def test_empty_input() -> None:
         inductor.fit(pd.DataFrame(), np.array([]))
 
 
+def test_mismatched_length_input(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+    """Test mismatch length error (Coverage for line 50)."""
+    features, cate = synthetic_cate_data
+    # Pass mismatched lengths
+    with pytest.raises(ValueError, match="must have the same length"):
+        inductor = RuleInductor()
+        inductor.fit(features, cate[:-1])
+
+
 def test_unfitted_error(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
     features, cate = synthetic_cate_data
     inductor = RuleInductor()
@@ -144,6 +153,9 @@ def test_non_numeric_features_pass() -> None:
 
     # We can mock `np.issubdtype` or just pass mixed types that sklearn might choke on later,
     # but we want to hit the `pass` line.
+
+    # Note: I removed the `if not numeric: pass` block in refactor.
+    # So this test is less relevant for that specific line, but good for robustness.
 
     df = pd.DataFrame({"A": ["a", "b"]})
     cate = np.array([1, 2])
