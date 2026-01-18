@@ -2,7 +2,7 @@
 # Licensed under the Prosperity Public License 3.0.0
 
 from enum import Enum
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -78,6 +78,9 @@ class InterventionResult(BaseModel):
     counterfactual_outcome: float
     confidence_interval: Tuple[float, float]
     refutation_status: RefutationStatus
+    cate_estimates: Optional[List[float]] = Field(
+        default=None, description="Conditional Average Treatment Effects per patient"
+    )
 
 
 class ExperimentProposal(BaseModel):
