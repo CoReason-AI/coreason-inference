@@ -106,26 +106,13 @@ class CausalEstimator:
             if patient_id_col not in self.data.columns:
                 raise ValueError(f"Patient ID column '{patient_id_col}' not found in data.")
 
-            # Find patient index
-            patient_indices = self.data.index[self.data[patient_id_col] == target_patient_id].tolist()
-            if not patient_indices:
-                raise ValueError(f"Patient ID '{target_patient_id}' not found in data.")
-
-            # Use the first occurrence (assuming unique ID per row or taking first match)
-            # cate_estimates is a list matching data order.
-            # We need the integer position (iloc) corresponding to the patient.
-            # self.data might have arbitrary index.
-            # cate_estimates is generated from self.data[effect_modifiers] in original order.
-            # So we need integer location.
-
-            # Get integer location of the patient
-            # pd.Index.get_loc returns integer or slice or boolean mask.
-            # Safer to find integer index manually or assume unique.
-            # Let's use boolean mask on the column, then np.where
+            # Find patient index (integer location)
+            # cate_estimates corresponds to the rows of self.data in order.
             mask = (self.data[patient_id_col] == target_patient_id).values
             locs = np.where(mask)[0]
+
             if len(locs) == 0:
-                raise ValueError(f"Patient ID '{target_patient_id}' not found.")
+                raise ValueError(f"Patient ID '{target_patient_id}' not found in data.")
 
             patient_idx = locs[0]
             effect_value = float(cate_estimates[patient_idx])
