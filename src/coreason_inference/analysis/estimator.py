@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,12 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 
 from coreason_inference.schema import InterventionResult, RefutationStatus
 from coreason_inference.utils.logger import logger
+
+METHOD_LINEAR = "linear"
+METHOD_FOREST = "forest"
+
+DML_LINEAR_BACKEND = "backdoor.econml.dml.LinearDML"
+DML_FOREST_BACKEND = "backdoor.econml.dml.CausalForestDML"
 
 
 class CausalEstimator:
@@ -41,7 +47,8 @@ class CausalEstimator:
         confounders: List[str],
         patient_id_col: str = "patient_id",
         treatment_is_binary: bool = False,
-        method: str = "linear",  # "linear" or "forest"
+        method: str = METHOD_LINEAR,
+        num_simulations: int = 10,
     ) -> InterventionResult:
         """
         Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
@@ -53,6 +60,7 @@ class CausalEstimator:
             patient_id_col: The column name for patient IDs (used for result mapping).
             treatment_is_binary: Set to True if the treatment variable is binary (0/1).
             method: The estimation method. "linear" for LinearDML, "forest" for CausalForestDML.
+            num_simulations: Number of simulations for placebo refutation.
 
         Returns:
             InterventionResult: The estimated effect (ATE) and optional CATE estimates.
@@ -60,11 +68,7 @@ class CausalEstimator:
         logger.info(f"Starting causal estimation: Treatment='{treatment}', Outcome='{outcome}', Method='{method}'")
 
         # 1. Define Causal Model
-        # If using Causal Forest, we treat confounders as effect modifiers (X) to estimate heterogeneity.
-        # Otherwise, they are treated as common causes (W) for control.
-        # Note: DoWhy maps effect_modifiers to 'X' and common_causes to 'W' in EconML.
-        # CausalForestDML requires 'X' to be present.
-        effect_modifiers = confounders if method == "forest" else []
+        effect_modifiers = confounders if method == METHOD_FOREST else []
 
         model = CausalModel(
             data=self.data,
@@ -79,35 +83,7 @@ class CausalEstimator:
         identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
 
         # 3. Estimate Effect
-        # Configure estimator based on treatment type and selected method
-        model_t = LogisticRegression() if treatment_is_binary else LinearRegression()
-        model_y = LinearRegression()
-
-        if method == "forest":
-            method_name = "backdoor.econml.dml.CausalForestDML"
-            # CausalForestDML specific params
-            # We use default trees/splits for this atomic unit.
-            method_params = {
-                "init_params": {
-                    "model_y": model_y,
-                    "model_t": model_t,
-                    "discrete_treatment": treatment_is_binary,
-                    "n_estimators": 100,  # Efficient for tests/demos
-                    "random_state": 42,
-                },
-                "fit_params": {},
-            }
-        else:
-            method_name = "backdoor.econml.dml.LinearDML"
-            method_params = {
-                "init_params": {
-                    "model_y": model_y,
-                    "model_t": model_t,
-                    "discrete_treatment": treatment_is_binary,
-                    "random_state": 42,
-                },
-                "fit_params": {},
-            }
+        method_name, method_params = self._get_method_params(method, treatment_is_binary)
 
         try:
             estimate = model.estimate_effect(
@@ -119,34 +95,11 @@ class CausalEstimator:
             logger.error(f"Estimation failed: {e}")
             raise e
 
-        effect_value = estimate.value
+        effect_value = float(estimate.value)
         logger.info(f"Estimated Effect (ATE): {effect_value}")
 
         # Extract CATE if method is forest
-        cate_estimates: Optional[List[float]] = None
-        if method == "forest":
-            try:
-                # Access the underlying EconML estimator from the DoWhy estimate object
-                # DoWhy stores the fitted estimator.
-                # Usually: estimate.estimator
-                # The EconML wrapper has a method `effect(X)`.
-                # We need the features (X) used for heterogeneity.
-                # In CausalForestDML, effect_modifiers usually default to common_causes (confounders)
-                # unless specified otherwise in identifying estimand.
-                # DoWhy passes common_causes as X + W usually?
-                # Actually, `estimate.estimator.effect(data)` usually requires data with the effect modifier columns.
-                # We pass the full dataframe subset?
-                # Dowhy's `estimate_effect` passes the data used during fit.
-                # We can try to use `estimate.estimator.effect(self.data[confounders])`?
-                # Or safely `self.data` if it handles column selection.
-                # Let's inspect `estimate.estimator` behavior or try passing full data.
-                # Safest is to pass the specific columns if we know them.
-                # DoWhy might have stored effect modifiers.
-                # EconML expects X (effect modifiers) to predict CATE.
-                cate_arr = estimate.estimator.effect(self.data[effect_modifiers])
-                cate_estimates = cate_arr.flatten().tolist()
-            except Exception as e:
-                logger.warning(f"Could not extract CATE estimates: {e}")
+        cate_estimates = self._extract_cate_estimates(estimate, effect_modifiers) if method == METHOD_FOREST else None
 
         # 4. Refute Estimate (Placebo Test)
         refutation = model.refute_estimate(
@@ -154,7 +107,7 @@ class CausalEstimator:
             estimate,
             method_name="placebo_treatment_refuter",
             placebo_type="permute",
-            num_simulations=10,
+            num_simulations=num_simulations,
         )
 
         refutation_passed = refutation.refutation_result["is_statistically_significant"]
@@ -162,36 +115,72 @@ class CausalEstimator:
         logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
 
         # Confidence Interval
-        ci = estimate.get_confidence_intervals()
-        if ci is None:
-            ci_low, ci_high = (effect_value, effect_value)
-        else:
-            # If CATE, CI might be array?
-            # get_confidence_intervals() on DoWhy usually returns the CI of the *target estimand* (ATE).
-            # For CATE, we need `const_marginal_effect_interval` or similar from EconML.
-            # But `estimate.get_confidence_intervals()` returns ATE CI.
-            # We'll stick to ATE CI for the main fields.
-            # EconML usually returns (lb, ub) scalar for ATE if asked for ATE, or arrays for CATE.
-            # DoWhy asks for the ATE CI usually.
-            try:
-                if isinstance(ci, tuple) or isinstance(ci, list):
-                    ci_low, ci_high = ci[0], ci[1]
-                    # If these are arrays (CATE CIs), take mean or just first?
-                    # Ideally we want ATE CI here.
-                    if isinstance(ci_low, (np.ndarray, list)):
-                        ci_low = np.mean(ci_low)
-                    if isinstance(ci_high, (np.ndarray, list)):
-                        ci_high = np.mean(ci_high)
-            except Exception:
-                ci_low, ci_high = (effect_value, effect_value)
+        ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
 
         result = InterventionResult(
             patient_id="POPULATION_ATE",
             intervention=f"do({treatment})",
-            counterfactual_outcome=float(effect_value),
-            confidence_interval=(float(ci_low), float(ci_high)),
+            counterfactual_outcome=effect_value,
+            confidence_interval=(ci_low, ci_high),
             refutation_status=status,
             cate_estimates=cate_estimates,
         )
 
         return result
+
+    def _get_method_params(self, method: str, treatment_is_binary: bool) -> Tuple[str, Dict[str, Any]]:
+        """
+        Constructs the method name and parameters for the EconML estimator.
+        """
+        model_t = LogisticRegression() if treatment_is_binary else LinearRegression()
+        model_y = LinearRegression()
+
+        init_params = {
+            "model_y": model_y,
+            "model_t": model_t,
+            "discrete_treatment": treatment_is_binary,
+            "random_state": 42,
+        }
+
+        if method == METHOD_FOREST:
+            method_name = DML_FOREST_BACKEND
+            init_params["n_estimators"] = 100
+        else:
+            method_name = DML_LINEAR_BACKEND
+
+        return method_name, {"init_params": init_params, "fit_params": {}}
+
+    def _extract_cate_estimates(self, estimate: Any, effect_modifiers: List[str]) -> Optional[List[float]]:
+        """
+        Extracts Conditional Average Treatment Effects (CATE) from the fitted estimator.
+        """
+        try:
+            # EconML expects X (effect modifiers) to predict CATE.
+            cate_arr = estimate.estimator.effect(self.data[effect_modifiers])
+            return list(cate_arr.flatten().tolist())
+        except Exception as e:
+            logger.warning(f"Could not extract CATE estimates: {e}")
+            return None
+
+    def _extract_confidence_intervals(self, estimate: Any, default_value: float) -> Tuple[float, float]:
+        """
+        Safely extracts confidence intervals from the estimate.
+        """
+        ci = estimate.get_confidence_intervals()
+        if ci is None:
+            return default_value, default_value
+
+        try:
+            if isinstance(ci, (tuple, list)):
+                ci_low, ci_high = ci[0], ci[1]
+
+                if isinstance(ci_low, (np.ndarray, list)):
+                    ci_low = float(np.mean(ci_low))
+                if isinstance(ci_high, (np.ndarray, list)):
+                    ci_high = float(np.mean(ci_high))
+
+                return float(ci_low), float(ci_high)
+        except Exception:
+            pass
+
+        return default_value, default_value
