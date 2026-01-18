@@ -49,6 +49,7 @@ class CausalEstimator:
         treatment_is_binary: bool = False,
         method: str = METHOD_LINEAR,
         num_simulations: int = 10,
+        target_patient_id: Optional[str] = None,
     ) -> InterventionResult:
         """
         Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
@@ -61,9 +62,10 @@ class CausalEstimator:
             treatment_is_binary: Set to True if the treatment variable is binary (0/1).
             method: The estimation method. "linear" for LinearDML, "forest" for CausalForestDML.
             num_simulations: Number of simulations for placebo refutation.
+            target_patient_id: Optional ID of a specific patient to retrieve individual CATE for.
 
         Returns:
-            InterventionResult: The estimated effect (ATE) and optional CATE estimates.
+            InterventionResult: The estimated effect (ATE or individual CATE) and optional CATE distribution.
         """
         logger.info(f"Starting causal estimation: Treatment='{treatment}', Outcome='{outcome}', Method='{method}'")
 
@@ -95,11 +97,46 @@ class CausalEstimator:
             logger.error(f"Estimation failed: {e}")
             raise e
 
-        effect_value = float(estimate.value)
-        logger.info(f"Estimated Effect (ATE): {effect_value}")
-
         # Extract CATE if method is forest
         cate_estimates = self._extract_cate_estimates(estimate, effect_modifiers) if method == METHOD_FOREST else None
+
+        # Determine Primary Outcome Value (ATE or Personalized CATE)
+        if target_patient_id and cate_estimates:
+            # Personalized Inference
+            if patient_id_col not in self.data.columns:
+                raise ValueError(f"Patient ID column '{patient_id_col}' not found in data.")
+
+            # Find patient index
+            patient_indices = self.data.index[self.data[patient_id_col] == target_patient_id].tolist()
+            if not patient_indices:
+                raise ValueError(f"Patient ID '{target_patient_id}' not found in data.")
+
+            # Use the first occurrence (assuming unique ID per row or taking first match)
+            # cate_estimates is a list matching data order.
+            # We need the integer position (iloc) corresponding to the patient.
+            # self.data might have arbitrary index.
+            # cate_estimates is generated from self.data[effect_modifiers] in original order.
+            # So we need integer location.
+
+            # Get integer location of the patient
+            # pd.Index.get_loc returns integer or slice or boolean mask.
+            # Safer to find integer index manually or assume unique.
+            # Let's use boolean mask on the column, then np.where
+            mask = (self.data[patient_id_col] == target_patient_id).values
+            locs = np.where(mask)[0]
+            if len(locs) == 0:
+                raise ValueError(f"Patient ID '{target_patient_id}' not found.")
+
+            patient_idx = locs[0]
+            effect_value = float(cate_estimates[patient_idx])
+            result_patient_id = target_patient_id
+            logger.info(f"Personalized Effect for {target_patient_id}: {effect_value}")
+
+        else:
+            # Population ATE
+            effect_value = float(estimate.value)
+            result_patient_id = "POPULATION_ATE"
+            logger.info(f"Estimated Effect (ATE): {effect_value}")
 
         # 4. Refute Estimate (Placebo Test)
         refutation = model.refute_estimate(
@@ -118,7 +155,7 @@ class CausalEstimator:
         ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
 
         result = InterventionResult(
-            patient_id="POPULATION_ATE",
+            patient_id=result_patient_id,
             intervention=f"do({treatment})",
             counterfactual_outcome=effect_value,
             confidence_interval=(ci_low, ci_high),

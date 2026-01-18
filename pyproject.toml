@@ -8,16 +8,18 @@ readme = "README.md"
 packages = [{include = "coreason_inference", from = "src"}]
 
 [tool.poetry.dependencies]
-python = ">=3.12, <3.14"
+python = ">=3.12, <3.13"
 loguru = "^0.7.2"
 pydantic = "^2.12.5"
 pandas = "^2.3.3"
+numpy = ">=1.26.0, <2.0.0"
 torch = "^2.9.1"
 torchdiffeq = "^0.2.5"
-dowhy = "^0.14"
+dowhy = ">=0.11,<0.14"
 econml = "^0.16.0"
 scikit-learn = "<1.7"
 shap = ">=0.38.1,<0.49.0"
+networkx = "<3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
