@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -62,6 +62,14 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         h_enc = self.activation(self.encoder_hidden(x))
         return self.mu_layer(h_enc)
 
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """
+        Decodes latent vectors z back to the input space x_hat.
+        """
+        h_dec = self.activation(self.decoder_hidden(z))
+        x_hat = self.decoder_output(h_dec)
+        return x_hat
+
 
 class LatentMiner:
     """
@@ -84,6 +92,7 @@ class LatentMiner:
         self.model: Optional[CausalVAE] = None
         self.scaler = StandardScaler()
         self.input_dim: int = 0
+        self.feature_names: List[str] = []
 
     def fit(self, data: pd.DataFrame) -> None:
         if data.empty:
@@ -95,6 +104,7 @@ class LatentMiner:
 
         # Preprocessing
         self.input_dim = data.shape[1]
+        self.feature_names = data.columns.tolist()
         X_scaled = self.scaler.fit_transform(data.values)
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
 
@@ -133,6 +143,33 @@ class LatentMiner:
                 logger.debug(f"Epoch {epoch}: Loss={loss.item()} (Recon={recon_loss.item()}, KLD={kld_loss.item()})")
 
         logger.info("LatentMiner training complete.")
+
+    def generate(self, n_samples: int) -> pd.DataFrame:
+        """
+        Generates synthetic data ('Digital Twins') by sampling from the latent space.
+
+        Args:
+            n_samples: Number of synthetic samples to generate.
+
+        Returns:
+            pd.DataFrame: Generated data in the original feature space.
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call fit() first.")
+
+        # Sample from Prior N(0, I)
+        z = torch.randn(n_samples, self.latent_dim)
+
+        # Decode
+        self.model.eval()
+        with torch.no_grad():
+            x_hat_scaled = self.model.decode(z).numpy()
+
+        # Inverse Transform
+        x_hat = self.scaler.inverse_transform(x_hat_scaled)
+
+        # Return DataFrame
+        return pd.DataFrame(x_hat, columns=self.feature_names)
 
     def discover_latents(self, data: pd.DataFrame) -> pd.DataFrame:
         """

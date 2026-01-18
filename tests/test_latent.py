@@ -56,6 +56,14 @@ class TestCausalVAE:
         # Should not be exactly equal to mu (because of noise)
         assert not torch.allclose(z, mu)
 
+    def test_decode(self) -> None:
+        latent_dim = 5
+        input_dim = 10
+        model = CausalVAE(input_dim, latent_dim=latent_dim)
+        z = torch.randn(32, latent_dim)
+        x_hat = model.decode(z)
+        assert x_hat.shape == (32, input_dim)
+
 
 class TestLatentMiner:
     @pytest.fixture
@@ -95,3 +103,24 @@ class TestLatentMiner:
         miner = LatentMiner()
         with pytest.raises(ValueError, match="Model not trained"):
             miner.discover_latents(sample_data)
+
+    def test_generate(self, sample_data: pd.DataFrame) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=10)
+        miner.fit(sample_data)
+
+        # Generate data
+        n_samples = 50
+        generated_data = miner.generate(n_samples)
+
+        assert isinstance(generated_data, pd.DataFrame)
+        assert generated_data.shape == (n_samples, 3)
+        assert list(generated_data.columns) == ["x1", "x2", "x3"]
+
+        # Check values range (since original is ~N(0, 1), generated should be roughly within -5, 5)
+        assert generated_data.values.max() < 10
+        assert generated_data.values.min() > -10
+
+    def test_generate_without_fit_error(self) -> None:
+        miner = LatentMiner()
+        with pytest.raises(ValueError, match="Model not trained"):
+            miner.generate(10)
