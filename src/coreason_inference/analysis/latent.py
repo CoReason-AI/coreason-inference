@@ -157,6 +157,9 @@ class LatentMiner:
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
 
+        if n_samples <= 0:
+            return pd.DataFrame(columns=self.feature_names)
+
         # Sample from Prior N(0, I)
         z = torch.randn(n_samples, self.latent_dim)
 
