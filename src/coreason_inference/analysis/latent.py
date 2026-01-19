@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -62,6 +62,27 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         h_enc = self.activation(self.encoder_hidden(x))
         return self.mu_layer(h_enc)
 
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """
+        Decodes latent vectors z back to the input space x_hat.
+        """
+        h_dec = self.activation(self.decoder_hidden(z))
+        x_hat = self.decoder_output(h_dec)
+        return x_hat
+
+
+class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
+    """
+    Helper wrapper for SHAP explanation to isolate the encoder mean.
+    """
+
+    def __init__(self, model: CausalVAE):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model.encode_mu(x)
+
 
 class LatentMiner:
     """
@@ -84,8 +105,13 @@ class LatentMiner:
         self.model: Optional[CausalVAE] = None
         self.scaler = StandardScaler()
         self.input_dim: int = 0
+        self.feature_names: List[str] = []
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def fit(self, data: pd.DataFrame) -> None:
+    def _preprocess(self, data: pd.DataFrame, fit_scaler: bool = False) -> torch.Tensor:
+        """
+        Validates, scales, and converts input data to a tensor on the correct device.
+        """
         if data.empty:
             raise ValueError("Input data is empty.")
 
@@ -93,18 +119,25 @@ class LatentMiner:
         if data.isnull().values.any() or np.isinf(data.values).any():
             raise ValueError("Input data contains NaN or infinite values.")
 
-        # Preprocessing
-        self.input_dim = data.shape[1]
-        X_scaled = self.scaler.fit_transform(data.values)
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+        if fit_scaler:
+            self.input_dim = data.shape[1]
+            self.feature_names = data.columns.tolist()
+            X_scaled = self.scaler.fit_transform(data.values)
+        else:
+            X_scaled = self.scaler.transform(data.values)
+
+        return torch.tensor(X_scaled, dtype=torch.float32, device=self.device)
+
+    def fit(self, data: pd.DataFrame) -> None:
+        X_tensor = self._preprocess(data, fit_scaler=True)
 
         # Initialize Model
-        self.model = CausalVAE(self.input_dim, latent_dim=self.latent_dim)
+        self.model = CausalVAE(self.input_dim, latent_dim=self.latent_dim).to(self.device)
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
         logger.info(
             f"Training LatentMiner (Beta-VAE) with input_dim={self.input_dim}, "
-            f"latent_dim={self.latent_dim}, beta={self.beta}"
+            f"latent_dim={self.latent_dim}, beta={self.beta} on {self.device}"
         )
 
         # Training Loop
@@ -134,6 +167,36 @@ class LatentMiner:
 
         logger.info("LatentMiner training complete.")
 
+    def generate(self, n_samples: int) -> pd.DataFrame:
+        """
+        Generates synthetic data ('Digital Twins') by sampling from the latent space.
+
+        Args:
+            n_samples: Number of synthetic samples to generate.
+
+        Returns:
+            pd.DataFrame: Generated data in the original feature space.
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call fit() first.")
+
+        if n_samples <= 0:
+            return pd.DataFrame(columns=self.feature_names)
+
+        # Sample from Prior N(0, I)
+        z = torch.randn(n_samples, self.latent_dim, device=self.device)
+
+        # Decode
+        self.model.eval()
+        with torch.no_grad():
+            x_hat_scaled = self.model.decode(z).cpu().numpy()
+
+        # Inverse Transform
+        x_hat = self.scaler.inverse_transform(x_hat_scaled)
+
+        # Return DataFrame
+        return pd.DataFrame(x_hat, columns=self.feature_names)
+
     def discover_latents(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Maps input data to the latent space (Z).
@@ -142,12 +205,7 @@ class LatentMiner:
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
 
-        if data.isnull().values.any() or np.isinf(data.values).any():
-            raise ValueError("Input data contains NaN or infinite values.")
-
-        # Preprocessing
-        X_scaled = self.scaler.transform(data.values)
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+        X_tensor = self._preprocess(data, fit_scaler=False)
 
         # Inference
         self.model.eval()
@@ -156,7 +214,7 @@ class LatentMiner:
 
         # Convert to DataFrame
         latent_cols = [f"Z_{i}" for i in range(self.latent_dim)]
-        return pd.DataFrame(mu.numpy(), columns=latent_cols, index=data.index)
+        return pd.DataFrame(mu.cpu().numpy(), columns=latent_cols, index=data.index)
 
     def interpret_latents(self, data: pd.DataFrame, samples: int = 100) -> pd.DataFrame:
         """
@@ -174,47 +232,26 @@ class LatentMiner:
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
 
-        if data.empty:
-            raise ValueError("Input data is empty.")
+        # preprocess returns tensor on self.device
+        X_tensor = self._preprocess(data, fit_scaler=False)
 
-        # Preprocessing
-        # We need scaled data for the model
-        X_scaled = self.scaler.transform(data.values)
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
-
-        # Background selection: Use a random subset if data is large, or K-Means
-        # For simplicity and stability, we use a random subset as background
+        # Background selection
         if len(data) > samples:
             indices = np.random.choice(len(data), samples, replace=False)
             background_tensor = X_tensor[indices]
         else:
             background_tensor = X_tensor
 
-        # We want to explain the `encode_mu` part of the model.
-        # However, shap.DeepExplainer/GradientExplainer usually takes a module.
-        # We can pass a wrapped method if we are careful, or just the whole model if it returns the target.
-        # But our model returns a tuple.
-        # So we create a lightweight wrapper module just for SHAP.
-
-        class EncoderWrapper(nn.Module):  # type: ignore[misc]
-            def __init__(self, model: CausalVAE):
-                super().__init__()
-                self.model = model
-
-            def forward(self, x: torch.Tensor) -> torch.Tensor:
-                return self.model.encode_mu(x)
-
-        wrapped_model = EncoderWrapper(self.model)
+        wrapped_model = _ShapEncoderWrapper(self.model)
         wrapped_model.eval()
 
-        # Define explain_tensor early to avoid UnboundLocalError
+        # SHAP often expects tensors if model is nn.Module, but for KernelExplainer it needs functions.
+        # DeepExplainer usually handles device if model and data are on same device.
+
         explain_tensor = X_tensor[:samples] if len(X_tensor) > samples else X_tensor
 
-        # Use GradientExplainer (better for PyTorch than DeepExplainer in some versions, or vice versa)
-        # DeepExplainer is generally preferred for DL models in SHAP.
         try:
-            # Note: DeepExplainer sometimes struggles with exact gradients if not set up perfectly.
-            # GradientExplainer is robust for PyTorch.
+            # DeepExplainer is robust for PyTorch.
             explainer = shap.DeepExplainer(wrapped_model, background_tensor)
 
             # Explain the whole dataset (or a subset if too large)
@@ -222,67 +259,43 @@ class LatentMiner:
         except Exception as e:
             logger.warning(f"DeepExplainer failed ({e}), falling back to KernelExplainer.")
 
-            # Fallback to KernelExplainer (Model Agnostic, slower)
-            # KernelExplainer expects a function that takes numpy array and returns numpy array
+            # Fallback to KernelExplainer
+            # Expects function: numpy -> numpy
             def predict_fn(x_np: np.ndarray) -> np.ndarray:
-                x_torch = torch.tensor(x_np, dtype=torch.float32)
+                x_torch = torch.tensor(x_np, dtype=torch.float32, device=self.device)
                 with torch.no_grad():
                     out = wrapped_model(x_torch)
-                return out.numpy()
+                return out.cpu().numpy()
 
             # Using a smaller background for KernelExplainer as it is slow
-            background_small = background_tensor.numpy()[:10]  # Very small background
+            background_small = background_tensor.cpu().numpy()[:10]  # Very small background
             explainer = shap.KernelExplainer(predict_fn, background_small)
-            shap_values = explainer.shap_values(explain_tensor.numpy())
+            shap_values = explainer.shap_values(explain_tensor.cpu().numpy())
 
-        # SHAP values structure:
-        # If output is (N_samples, N_latent), shap_values is usually a list of (N_samples, N_features) arrays,
-        # one for each latent dimension. Or a single array (N_samples, N_latent, N_features).
-        # DeepExplainer usually returns a list of arrays (one per output node).
-
-        # Let's handle both cases.
+        # SHAP values structure handling (same as before)
         feature_importance_matrix = np.zeros((self.latent_dim, self.input_dim))
 
         if isinstance(shap_values, list):
-            # List of [N_samples, N_features]
             for i, s_vals in enumerate(shap_values):
-                # Global importance: Mean of absolute values
                 feature_importance_matrix[i, :] = np.mean(np.abs(s_vals), axis=0)
         else:
-            # Maybe array [N_samples, N_features] (if 1 output?) or [N_samples, N_features, N_outputs]?
-            # Check shape
-            # If shape is (N_samples, N_latent, N_features)
-            # Actually shap often outputs list.
-            # If latent_dim=1, it might be just array.
             s_vals = np.array(shap_values)
             if s_vals.ndim == 3:
-                # If structure is (N_samples, N_features, N_latents) which often happens if not list
-                # Check dimensions
                 if s_vals.shape[2] == self.latent_dim:
-                    # (N, Features, Latent)
-                    # Average over samples (axis 0) -> (Features, Latent)
-                    # Transpose to (Latent, Features)
                     feature_importance_matrix = np.mean(np.abs(s_vals), axis=0).T
                 elif s_vals.shape[1] == self.latent_dim:
-                    # (N, Latent, Features)
-                    # Average over samples -> (Latent, Features)
                     feature_importance_matrix = np.mean(np.abs(s_vals), axis=0)
                 else:
                     logger.error(f"Unexpected SHAP values shape: {s_vals.shape}")
             elif s_vals.ndim == 2:
-                # Single output? (N, Features)
                 if self.latent_dim == 1:
                     feature_importance_matrix[0, :] = np.mean(np.abs(s_vals), axis=0)
 
-        # Verify shape just in case
         if feature_importance_matrix.shape != (self.latent_dim, self.input_dim):  # pragma: no cover
             logger.warning(f"Shape mismatch: {feature_importance_matrix.shape}, transposing.")
             if feature_importance_matrix.shape == (self.input_dim, self.latent_dim):
                 feature_importance_matrix = feature_importance_matrix.T
 
-        # Construct DataFrame
-        # Rows: Z_0, Z_1...
-        # Columns: Original Feature Names
         latent_index = [f"Z_{i}" for i in range(self.latent_dim)]
         feature_names = data.columns.tolist()
 
