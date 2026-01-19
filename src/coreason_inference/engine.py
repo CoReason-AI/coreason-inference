@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +17,7 @@ from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
+from coreason_inference.analysis.rule_inductor import RuleInductor
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
 from coreason_inference.schema import (
     CausalGraph,
@@ -47,11 +48,20 @@ class InferenceEngine:
     Orchestrates the Discover-Represent-Simulate-Act loop.
     """
 
-    def __init__(self) -> None:
-        self.dynamics_engine = DynamicsEngine()
-        self.latent_miner = LatentMiner()
-        self.active_scientist = ActiveScientist()
-        self.virtual_simulator = VirtualSimulator()
+    def __init__(
+        self,
+        dynamics_engine: Optional[DynamicsEngine] = None,
+        latent_miner: Optional[LatentMiner] = None,
+        active_scientist: Optional[ActiveScientist] = None,
+        virtual_simulator: Optional[VirtualSimulator] = None,
+        rule_inductor: Optional[RuleInductor] = None,
+    ) -> None:
+        self.dynamics_engine = dynamics_engine or DynamicsEngine()
+        self.latent_miner = latent_miner or LatentMiner()
+        self.active_scientist = active_scientist or ActiveScientist()
+        self.virtual_simulator = virtual_simulator or VirtualSimulator()
+        self.rule_inductor = rule_inductor or RuleInductor()
+
         # Estimator is instantiated per query usually, but we can keep a reference if needed.
         self.estimator: Optional[CausalEstimator] = None
 
@@ -59,6 +69,14 @@ class InferenceEngine:
         self.graph: Optional[CausalGraph] = None
         self.latents: Optional[pd.DataFrame] = None
         self.augmented_data: Optional[pd.DataFrame] = None
+        self.cate_estimates: Optional[pd.Series] = None
+        self._last_analysis_meta: Dict[str, str] = {}
+
+    @property
+    def _estimator(self) -> CausalEstimator:
+        if self.augmented_data is None:
+            raise ValueError("Data not available. Run analyze() first.")
+        return CausalEstimator(self.augmented_data)
 
     def analyze(
         self,
@@ -121,7 +139,8 @@ class InferenceEngine:
         if estimate_effect_for:
             treatment, outcome = estimate_effect_for
             logger.info(f"Step 4: Simulate (Estimating effect of {treatment} on {outcome})")
-            self.estimator = CausalEstimator(self.augmented_data)
+            # We set self.estimator for backward compatibility or exposure, though usually transient
+            self.estimator = self._estimator
 
             # Use all other variables as potential confounders (excluding time)
             # This is a naive selection; usually, we use the graph to select the adjustment set.
@@ -169,11 +188,73 @@ class InferenceEngine:
         """
         Direct access to the CausalEstimator (Simulate).
         """
+        return self._estimator.estimate_effect(treatment, outcome, confounders)
+
+    def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
+        """
+        Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
+        Stores the estimates for subsequent rule induction.
+        """
+        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
+
         if self.augmented_data is None:
             raise ValueError("Data not available. Run analyze() first.")
 
-        estimator = CausalEstimator(self.augmented_data)
-        return estimator.estimate_effect(treatment, outcome, confounders)
+        # Run estimation with 'forest' method
+        result = self._estimator.estimate_effect(
+            treatment=treatment, outcome=outcome, confounders=confounders, method="forest"
+        )
+
+        # Update metadata for rule induction context
+        self._last_analysis_meta = {"treatment": treatment, "outcome": outcome}
+
+        # Store CATE estimates
+        if result.cate_estimates:
+            self.cate_estimates = pd.Series(
+                result.cate_estimates, index=self.augmented_data.index, name=f"CATE_{treatment}_{outcome}"
+            )
+            logger.info(f"Stored {len(result.cate_estimates)} CATE estimates.")
+        else:
+            logger.warning("No CATE estimates returned from Causal Forest.")
+            self.cate_estimates = None
+
+        return result
+
+    def induce_rules(self, feature_cols: Optional[List[str]] = None) -> OptimizationOutput:
+        """
+        Induces rules to identify Super-Responders based on stored CATE estimates.
+
+        Args:
+            feature_cols: Optional list of columns to use as features for rule induction.
+                          If None, uses all numeric columns from augmented_data (excluding metadata).
+        """
+        if self.cate_estimates is None:
+            raise ValueError("No CATE estimates found. Run analyze_heterogeneity() first.")
+
+        if self.augmented_data is None:
+            raise ValueError("Data not available.")
+
+        # Determine features
+        if feature_cols:
+            features = self.augmented_data[feature_cols]
+        else:
+            # Select numeric types, exclude potential metadata/targets
+            # This is a heuristic. Ideally user provides features.
+            features = self.augmented_data.select_dtypes(include=["number"])
+
+            # Prevent Data Leakage: Exclude treatment and outcome if known
+            exclusions = []
+            if "treatment" in self._last_analysis_meta:
+                exclusions.append(self._last_analysis_meta["treatment"])
+            if "outcome" in self._last_analysis_meta:
+                exclusions.append(self._last_analysis_meta["outcome"])
+
+            features = features.drop(columns=[c for c in exclusions if c in features.columns])
+
+        logger.info(f"Inducing rules using {features.shape[1]} features (excluded: {self._last_analysis_meta}).")
+
+        self.rule_inductor.fit(features, self.cate_estimates)
+        return self.rule_inductor.induce_rules_with_data(features, self.cate_estimates)
 
     def run_virtual_trial(
         self,
