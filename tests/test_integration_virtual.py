@@ -14,6 +14,7 @@ from coreason_inference.schema import (
     OptimizationOutput,
     ProtocolRule,
     RefutationStatus,
+    VirtualTrialResult,
 )
 
 
@@ -78,9 +79,10 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
 
     mock_simulate.assert_called_once_with(cohort=mock_cohort, treatment="T", outcome="Y", confounders=["X"])
 
-    assert result["cohort_size"] == 2
-    assert result["safety_scan"] == ["Risk A"]
-    assert result["simulation_result"] == mock_sim_result
+    assert isinstance(result, VirtualTrialResult)
+    assert result.cohort_size == 2
+    assert result.safety_scan == ["Risk A"]
+    assert result.simulation_result == mock_sim_result
 
 
 def test_run_virtual_trial_not_fitted(mock_engine: InferenceEngine) -> None:
@@ -100,8 +102,9 @@ def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
 
     result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
 
-    assert result["cohort_size"] == 0
-    assert result["simulation_result"] is None
+    assert isinstance(result, VirtualTrialResult)
+    assert result.cohort_size == 0
+    assert result.simulation_result is None
     # Should not attempt simulation
     mock_simulate.assert_not_called()
 
@@ -116,4 +119,5 @@ def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine) -> N
 
     result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
 
-    assert result["simulation_result"] is None
+    assert isinstance(result, VirtualTrialResult)
+    assert result.simulation_result is None

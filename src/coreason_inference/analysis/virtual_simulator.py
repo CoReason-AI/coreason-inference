@@ -1,7 +1,8 @@
 # Copyright (C) 2026 CoReason
 # Licensed under the Prosperity Public License 3.0.0
 
-from typing import List
+import operator
+from typing import Any, Callable, Dict, List
 
 import networkx as nx
 import pandas as pd
@@ -10,6 +11,18 @@ from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.schema import CausalGraph, InterventionResult, ProtocolRule
 from coreason_inference.utils.logger import logger
+
+# Map string operators to functions
+# e.g. ">" -> operator.gt(a, b)
+# We use Any because pandas Series comparison returns Series[bool], not bool
+OPERATOR_MAP: Dict[str, Callable[[Any, Any], Any]] = {
+    ">": operator.gt,
+    ">=": operator.ge,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
 
 
 class VirtualSimulator:
@@ -74,9 +87,8 @@ class VirtualSimulator:
         """
         logger.info(f"Starting Safety Scan for treatment '{treatment}' against {len(adverse_outcomes)} outcomes.")
 
-        # Build NetworkX Graph
-        G = nx.DiGraph()
-        G.add_edges_from(graph.edges)
+        # Use centralized graph conversion
+        G = graph.to_networkx()
 
         safety_flags = []
 
@@ -162,26 +174,18 @@ class VirtualSimulator:
                 logger.warning(f"Rule feature '{feature}' not found in generated data. Skipping rule.")
                 continue
 
-            try:
-                if op == ">":
-                    filtered_data = filtered_data[filtered_data[feature] > val]
-                elif op == ">=":
-                    filtered_data = filtered_data[filtered_data[feature] >= val]
-                elif op == "<":
-                    filtered_data = filtered_data[filtered_data[feature] < val]
-                elif op == "<=":
-                    filtered_data = filtered_data[filtered_data[feature] <= val]
-                elif op == "==":
-                    filtered_data = filtered_data[filtered_data[feature] == val]
-                elif op == "!=":
-                    filtered_data = filtered_data[filtered_data[feature] != val]
-                else:
-                    logger.warning(f"Unsupported operator '{op}' in rule for '{feature}'. Skipping.")
+            op_func = OPERATOR_MAP.get(op)
+            if not op_func:
+                logger.warning(f"Unsupported operator '{op}' in rule for '{feature}'. Skipping.")
+                continue
 
+            try:
+                # Apply filter
+                # We use boolean indexing directly with the operator function
+                mask = op_func(filtered_data[feature], val)
+                filtered_data = filtered_data[mask]
             except Exception as e:
                 logger.error(f"Error applying rule {rule}: {e}")
-                # We continue to next rule rather than crashing, to be robust?
-                # Or strict? Let's be safe but log error.
 
             if filtered_data.empty:
                 logger.warning(f"Cohort empty after applying rule: {feature} {op} {val}")

@@ -4,6 +4,7 @@
 from enum import Enum
 from typing import List, Optional, Set, Tuple
 
+import networkx as nx
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -71,6 +72,18 @@ class CausalGraph(BaseModel):
 
         return self
 
+    def to_networkx(self) -> nx.DiGraph:
+        """
+        Converts the CausalGraph to a NetworkX DiGraph.
+        """
+        G = nx.DiGraph()
+        # Add nodes with attributes
+        for node in self.nodes:
+            G.add_node(node.id, codex_concept_id=node.codex_concept_id, is_latent=node.is_latent)
+        # Add edges
+        G.add_edges_from(self.edges)
+        return G
+
 
 class InterventionResult(BaseModel):
     patient_id: str
@@ -102,3 +115,11 @@ class OptimizationOutput(BaseModel):
     original_pos: float = Field(..., description="Baseline Probability of Success / Response Rate")
     optimized_pos: float = Field(..., description="Optimized Probability of Success in subgroup")
     safety_flags: List[str] = Field(default_factory=list, description="List of safety warnings")
+
+
+class VirtualTrialResult(BaseModel):
+    cohort_size: int = Field(..., description="Size of the synthetic cohort after filtering")
+    safety_scan: List[str] = Field(default_factory=list, description="Detected safety risks")
+    simulation_result: Optional[InterventionResult] = Field(
+        default=None, description="Result of the virtual trial simulation"
+    )

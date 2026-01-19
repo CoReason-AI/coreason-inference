@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +18,13 @@ from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
-from coreason_inference.schema import CausalGraph, ExperimentProposal, InterventionResult, OptimizationOutput
+from coreason_inference.schema import (
+    CausalGraph,
+    ExperimentProposal,
+    InterventionResult,
+    OptimizationOutput,
+    VirtualTrialResult,
+)
 from coreason_inference.utils.logger import logger
 
 
@@ -177,7 +183,7 @@ class InferenceEngine:
         confounders: List[str],
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
-    ) -> Dict[str, object]:
+    ) -> VirtualTrialResult:
         """
         Runs a virtual trial: Generates synthetic cohort based on optimized rules,
         scans for safety risks, and simulates the treatment effect.
@@ -191,11 +197,7 @@ class InferenceEngine:
             adverse_outcomes: List of adverse outcome names for safety scanning.
 
         Returns:
-            Dict: {
-                "cohort_size": int,
-                "safety_scan": List[str],
-                "simulation_result": InterventionResult
-            }
+            VirtualTrialResult: Result containing cohort size, safety flags, and effect estimate.
         """
         if self.latent_miner.model is None or self.graph is None:
             raise ValueError("Model not fitted. Run analyze() first.")
@@ -211,7 +213,7 @@ class InferenceEngine:
 
         if cohort.empty:
             logger.warning("Virtual trial aborted: Cohort is empty after filtering.")
-            return {"cohort_size": 0, "safety_scan": [], "simulation_result": None}
+            return VirtualTrialResult(cohort_size=0, safety_scan=[], simulation_result=None)
 
         # 2. Safety Scan
         safety_flags = []
@@ -232,8 +234,4 @@ class InferenceEngine:
             logger.error(f"Virtual trial simulation failed: {e}")
             sim_result = None
 
-        return {
-            "cohort_size": len(cohort),
-            "safety_scan": safety_flags,
-            "simulation_result": sim_result,
-        }
+        return VirtualTrialResult(cohort_size=len(cohort), safety_scan=safety_flags, simulation_result=sim_result)
