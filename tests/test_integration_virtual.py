@@ -104,3 +104,16 @@ def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
     assert result["simulation_result"] is None
     # Should not attempt simulation
     mock_simulate.assert_not_called()
+
+
+def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine) -> None:
+    """Test handling of simulation failure within engine."""
+    mock_generate = cast(MagicMock, mock_engine.virtual_simulator.generate_synthetic_cohort)
+    mock_simulate = cast(MagicMock, mock_engine.virtual_simulator.simulate_trial)
+
+    mock_generate.return_value = pd.DataFrame({"A": [1]})
+    mock_simulate.side_effect = Exception("Sim Error")
+
+    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+
+    assert result["simulation_result"] is None

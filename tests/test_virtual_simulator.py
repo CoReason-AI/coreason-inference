@@ -1,6 +1,7 @@
 # Copyright (C) 2026 CoReason
 # Licensed under the Prosperity Public License 3.0.0
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -140,6 +141,22 @@ def test_scan_safety(simulator: VirtualSimulator) -> None:
     flags_no_path = simulator.scan_safety(graph, treatment="D", adverse_outcomes=["B"])
     assert len(flags_no_path) == 0
 
+    # Test treatment not in graph
+    flags_missing_treat = simulator.scan_safety(graph, treatment="MISSING", adverse_outcomes=["A"])
+    assert len(flags_missing_treat) == 0
+
+
+def test_scan_safety_path_error(simulator: VirtualSimulator) -> None:
+    """Test error handling during path finding."""
+    nodes = [CausalNode(id="A", codex_concept_id=1, is_latent=False)]
+    graph = CausalGraph(nodes=nodes, edges=[], loop_dynamics=[], stability_score=0.0)
+
+    # We need to mock nx.has_path to return True but shortest_path to raise
+    with patch("networkx.has_path", return_value=True):
+        with patch("networkx.shortest_path", side_effect=Exception("Path error")):
+            flags = simulator.scan_safety(graph, "A", ["A"])
+            assert len(flags) == 0  # Should catch exception and not add flag
+
 
 @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
 def test_simulate_trial(mock_estimator_cls: MagicMock, simulator: VirtualSimulator) -> None:
@@ -177,3 +194,63 @@ def test_simulate_trial_validation(simulator: VirtualSimulator) -> None:
     # Empty cohort
     with pytest.raises(ValueError, match="empty cohort"):
         simulator.simulate_trial(pd.DataFrame(), "Drug", "Y", [])
+
+
+@patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
+def test_simulate_trial_failure(mock_estimator_cls: MagicMock, simulator: VirtualSimulator) -> None:
+    """Test exception propagation from estimator."""
+    mock_instance = mock_estimator_cls.return_value
+    mock_instance.estimate_effect.side_effect = Exception("Estimator Failed")
+
+    cohort = pd.DataFrame({"Drug": [0, 1], "Outcome": [0, 1]})
+
+    with pytest.raises(Exception, match="Estimator Failed"):
+        simulator.simulate_trial(cohort, "Drug", "Outcome", [])
+
+
+def test_apply_rules_error(simulator: VirtualSimulator) -> None:
+    """Test exception handling within rule application loop."""
+    df = pd.DataFrame({"val": [1, 2, 3]})
+    # Rule that might cause error?
+    # Hard to force pd error with simple types.
+    # We can mock the dataframe's __getitem__ but that's complex for the loop.
+    # Instead, let's subclass DataFrame to raise error on filter.
+
+    # Alternatively, pass a rule where value comparison fails, e.g. string vs float?
+    # Pandas usually handles that without crashing (just False).
+    # Let's try to patch the filtering line in the method?
+    # Or just rely on coverage reports to see if we can trigger it.
+
+    # Triggering the `except Exception` block in `_apply_rules`.
+    # Let's pass a rule with an object that raises error on comparison.
+    class BadObj:
+        def __lt__(self, other: Any) -> Any:
+            raise Exception("Comparison Error")
+
+        def __gt__(self, other: Any) -> Any:
+            raise Exception("Comparison Error")
+
+        def __le__(self, other: Any) -> Any:
+            raise Exception("Comparison Error")
+
+        def __ge__(self, other: Any) -> Any:
+            raise Exception("Comparison Error")
+
+    # The rule value is float in schema but let's force it if possible,
+    # or rely on dataframe column being incompatible.
+
+    # Actually, schema enforces float.
+    # Let's create a dataframe column with objects that fail comparison with float?
+    # No, simple types are robust.
+
+    # Let's skip trying to force the exception block if it's purely defensive.
+    # But for 100% coverage we need it.
+
+    # We can patch the DataFrame operator.
+    # `filtered_data[feature] > val` calls `__gt__`.
+
+    with patch("pandas.Series.__gt__", side_effect=Exception("Filter Error")):
+        # Only applies to Series > ...
+        res = simulator._apply_rules(df, [ProtocolRule(feature="val", operator=">", value=0, rationale="")])
+        # It should log error and return original (or current) data
+        assert len(res) == 3
