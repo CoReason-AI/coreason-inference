@@ -63,6 +63,29 @@ def test_analyze_heterogeneity_no_data() -> None:
         engine.analyze_heterogeneity("T", "Y", ["X"])
 
 
+def test_analyze_heterogeneity_no_cate_returned(mock_engine_with_data: InferenceEngine) -> None:
+    """Test handling when CausalEstimator returns no CATE estimates."""
+
+    # Mock result with None cate_estimates
+    mock_result = InterventionResult(
+        patient_id="POPULATION_ATE",
+        intervention="do(T)",
+        counterfactual_outcome=0.5,
+        confidence_interval=(0.4, 0.6),
+        refutation_status=RefutationStatus.PASSED,
+        cate_estimates=None,
+    )
+
+    with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
+        instance = MockEstimator.return_value
+        instance.estimate_effect.return_value = mock_result
+
+        result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1"])
+
+        assert result == mock_result
+        assert mock_engine_with_data.cate_estimates is None
+
+
 def test_induce_rules_success(mock_engine_with_data: InferenceEngine) -> None:
     """Test successful rule induction."""
 
@@ -115,4 +138,15 @@ def test_induce_rules_no_cate() -> None:
     engine.augmented_data = pd.DataFrame({"A": [1]})
 
     with pytest.raises(ValueError, match="No CATE estimates"):
+        engine.induce_rules()
+
+
+def test_induce_rules_data_missing_integrity() -> None:
+    """Test error when augmented_data is missing but cate_estimates exists."""
+    engine = InferenceEngine()
+    # Manually inject CATE to bypass first check
+    engine.cate_estimates = pd.Series([1.0, 2.0])
+    # augmented_data is None
+
+    with pytest.raises(ValueError, match="Data not available"):
         engine.induce_rules()
