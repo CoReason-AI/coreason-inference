@@ -168,10 +168,15 @@ class TestInferenceEngine:
             data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("MISSING_A", "MISSING_B")
         )
 
-        # 2. Test explain_latents after fit (Happy path - returns empty DF currently)
-        explanation = engine.explain_latents()
+        # 2. Test explain_latents after fit
+        # Now returns valid dataframe with SHAP values
+        explanation = engine.explain_latents(background_samples=10)
         assert isinstance(explanation, pd.DataFrame)
-        assert explanation.empty
+        assert not explanation.empty
+        # Check structure: Rows should be Latents (Z), Columns should be Features (A, B)
+        # Latent miner defaults to 5 latents
+        assert explanation.shape[0] == 5
+        assert set(explanation.columns) == {"A", "B"}
 
     def test_analyze_estimation_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """

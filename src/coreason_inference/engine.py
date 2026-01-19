@@ -71,6 +71,7 @@ class InferenceEngine:
         self.augmented_data: Optional[pd.DataFrame] = None
         self.cate_estimates: Optional[pd.Series] = None
         self._last_analysis_meta: Dict[str, str] = {}
+        self._latent_features: List[str] = []
 
     @property
     def _estimator(self) -> CausalEstimator:
@@ -111,7 +112,8 @@ class InferenceEngine:
         logger.info("Step 2: Represent (Latent Mining)")
         # We use the variable columns for latent discovery
         # (Assuming latents explain the variance in these observed vars)
-        observation_data = data[variable_cols]
+        self._latent_features = variable_cols
+        observation_data = data[self._latent_features]
         self.latent_miner.fit(observation_data)
         self.latents = self.latent_miner.discover_latents(observation_data)
 
@@ -170,19 +172,35 @@ class InferenceEngine:
         logger.info("Inference Pipeline Completed.")
         return result_obj
 
-    def explain_latents(self) -> pd.DataFrame:
+    def explain_latents(self, background_samples: int = 100) -> pd.DataFrame:
         """
         Returns the interpretation of the latent variables (SHAP values).
-        Uses the data stored in the latent miner (if any) or requires state.
-        Currently returns an empty DataFrame as placeholder for future atomic unit.
+        Calculates global feature importance (Mean Absolute SHAP) for each latent dimension.
+
+        Args:
+            background_samples: Number of samples to use for the background dataset (SHAP optimization).
+
+        Returns:
+            pd.DataFrame: A matrix where rows are Latent Variables (Z) and columns are Input Features.
         """
         if self.latent_miner.model is None:
             raise ValueError("Pipeline not run or latent miner not fitted.")
 
-        # In a real implementation, we would store the input columns used for fit
-        # and pass the corresponding data from augmented_data to interpret_latents.
-        # For this atomic unit, we defer specific interpretation wiring.
-        return pd.DataFrame()
+        if self.augmented_data is None or not self._latent_features:
+            raise ValueError("Data not available. Run analyze() first.")
+
+        logger.info(f"Explaining Latents using SHAP (background samples: {background_samples})...")
+
+        # Extract the original input features used for training the VAE
+        # self.augmented_data contains both original columns and latents.
+        # We must only pass the original input features to the explainer.
+        try:
+            explanation_data = self.augmented_data[self._latent_features]
+        except KeyError as e:
+            # Fallback if columns were dropped or renamed (unlikely in current flow)
+            raise ValueError(f"Could not retrieve original features for explanation: {e}") from e
+
+        return self.latent_miner.interpret_latents(explanation_data, samples=background_samples)
 
     def estimate_effect(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
         """
