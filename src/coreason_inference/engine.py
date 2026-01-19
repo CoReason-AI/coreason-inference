@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,12 +48,20 @@ class InferenceEngine:
     Orchestrates the Discover-Represent-Simulate-Act loop.
     """
 
-    def __init__(self) -> None:
-        self.dynamics_engine = DynamicsEngine()
-        self.latent_miner = LatentMiner()
-        self.active_scientist = ActiveScientist()
-        self.virtual_simulator = VirtualSimulator()
-        self.rule_inductor = RuleInductor()
+    def __init__(
+        self,
+        dynamics_engine: Optional[DynamicsEngine] = None,
+        latent_miner: Optional[LatentMiner] = None,
+        active_scientist: Optional[ActiveScientist] = None,
+        virtual_simulator: Optional[VirtualSimulator] = None,
+        rule_inductor: Optional[RuleInductor] = None,
+    ) -> None:
+        self.dynamics_engine = dynamics_engine or DynamicsEngine()
+        self.latent_miner = latent_miner or LatentMiner()
+        self.active_scientist = active_scientist or ActiveScientist()
+        self.virtual_simulator = virtual_simulator or VirtualSimulator()
+        self.rule_inductor = rule_inductor or RuleInductor()
+
         # Estimator is instantiated per query usually, but we can keep a reference if needed.
         self.estimator: Optional[CausalEstimator] = None
 
@@ -62,6 +70,13 @@ class InferenceEngine:
         self.latents: Optional[pd.DataFrame] = None
         self.augmented_data: Optional[pd.DataFrame] = None
         self.cate_estimates: Optional[pd.Series] = None
+        self._last_analysis_meta: Dict[str, str] = {}
+
+    @property
+    def _estimator(self) -> CausalEstimator:
+        if self.augmented_data is None:
+            raise ValueError("Data not available. Run analyze() first.")
+        return CausalEstimator(self.augmented_data)
 
     def analyze(
         self,
@@ -124,7 +139,8 @@ class InferenceEngine:
         if estimate_effect_for:
             treatment, outcome = estimate_effect_for
             logger.info(f"Step 4: Simulate (Estimating effect of {treatment} on {outcome})")
-            self.estimator = CausalEstimator(self.augmented_data)
+            # We set self.estimator for backward compatibility or exposure, though usually transient
+            self.estimator = self._estimator
 
             # Use all other variables as potential confounders (excluding time)
             # This is a naive selection; usually, we use the graph to select the adjustment set.
@@ -172,29 +188,25 @@ class InferenceEngine:
         """
         Direct access to the CausalEstimator (Simulate).
         """
-        if self.augmented_data is None:
-            raise ValueError("Data not available. Run analyze() first.")
-
-        estimator = CausalEstimator(self.augmented_data)
-        return estimator.estimate_effect(treatment, outcome, confounders)
+        return self._estimator.estimate_effect(treatment, outcome, confounders)
 
     def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
         """
         Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
         Stores the estimates for subsequent rule induction.
         """
+        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
+
         if self.augmented_data is None:
             raise ValueError("Data not available. Run analyze() first.")
 
-        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
-
-        # Instantiate estimator
-        estimator = CausalEstimator(self.augmented_data)
-
         # Run estimation with 'forest' method
-        result = estimator.estimate_effect(
+        result = self._estimator.estimate_effect(
             treatment=treatment, outcome=outcome, confounders=confounders, method="forest"
         )
+
+        # Update metadata for rule induction context
+        self._last_analysis_meta = {"treatment": treatment, "outcome": outcome}
 
         # Store CATE estimates
         if result.cate_estimates:
@@ -230,7 +242,16 @@ class InferenceEngine:
             # This is a heuristic. Ideally user provides features.
             features = self.augmented_data.select_dtypes(include=["number"])
 
-        logger.info(f"Inducing rules using {features.shape[1]} features.")
+            # Prevent Data Leakage: Exclude treatment and outcome if known
+            exclusions = []
+            if "treatment" in self._last_analysis_meta:
+                exclusions.append(self._last_analysis_meta["treatment"])
+            if "outcome" in self._last_analysis_meta:
+                exclusions.append(self._last_analysis_meta["outcome"])
+
+            features = features.drop(columns=[c for c in exclusions if c in features.columns])
+
+        logger.info(f"Inducing rules using {features.shape[1]} features (excluded: {self._last_analysis_meta}).")
 
         self.rule_inductor.fit(features, self.cate_estimates)
         return self.rule_inductor.induce_rules_with_data(features, self.cate_estimates)

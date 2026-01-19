@@ -53,6 +53,9 @@ def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -
             mock_engine_with_data.cate_estimates, pd.Series([0.1, 0.9, 0.2, 0.8], name="CATE_T_Y"), check_index=True
         )
 
+        # Verify metadata update (New requirement)
+        assert mock_engine_with_data._last_analysis_meta == {"treatment": "T", "outcome": "Y"}
+
 
 def test_analyze_heterogeneity_no_data() -> None:
     """Test error when data is missing."""
@@ -126,10 +129,32 @@ def test_induce_rules_auto_features(mock_engine_with_data: InferenceEngine) -> N
 
     mock_engine_with_data.induce_rules(feature_cols=None)
 
-    # Should use all numeric columns (X1, X2, T, Y)
+    # Should use all numeric columns (X1, X2, T, Y) since meta is empty
     args, _ = mock_engine_with_data.rule_inductor.fit.call_args
     features_arg = args[0]
     assert set(features_arg.columns) == {"X1", "X2", "T", "Y"}
+
+
+def test_induce_rules_excludes_leakage(mock_engine_with_data: InferenceEngine) -> None:
+    """Test that treatment and outcome are excluded from features during rule induction."""
+
+    # Setup state
+    mock_engine_with_data.cate_estimates = pd.Series([0.1, 0.9, 0.2, 0.8], name="CATE_T_Y")
+    mock_engine_with_data._last_analysis_meta = {"treatment": "T", "outcome": "Y"}
+
+    mock_engine_with_data.rule_inductor = MagicMock()
+    mock_engine_with_data.rule_inductor.induce_rules_with_data.return_value = OptimizationOutput(
+        new_criteria=[], original_pos=0, optimized_pos=0, safety_flags=[]
+    )
+
+    mock_engine_with_data.induce_rules(feature_cols=None)
+
+    # Verify T and Y are excluded
+    args, _ = mock_engine_with_data.rule_inductor.fit.call_args
+    features_arg = args[0]
+    assert "T" not in features_arg.columns
+    assert "Y" not in features_arg.columns
+    assert set(features_arg.columns) == {"X1", "X2"}
 
 
 def test_induce_rules_no_cate() -> None:
