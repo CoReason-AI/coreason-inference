@@ -66,16 +66,15 @@ class TestEngineExplainabilityComplex:
 
         # Check if any latent captures the structure
         # We look for a row where Importance(A) + Importance(B) > Importance(Noise) * factor
-        structure_found = False
 
-        for _, row in explanation.iterrows():
-            signal_strength = abs(row["Feature_A"]) + abs(row["Feature_B"])
-            noise_strength = abs(row["Feature_Noise"])
+        # Use vectorized pandas operations (Performance Best Practice)
+        # explanation shape: (n_latents, n_features)
+        signal_strength = explanation["Feature_A"].abs() + explanation["Feature_B"].abs()
+        noise_strength = explanation["Feature_Noise"].abs()
 
-            # If signal is significantly higher than noise
-            if signal_strength > 2.0 * noise_strength:
-                structure_found = True
-                break
+        # Check if any latent satisfies the condition
+        # Returns a Series of booleans, .any() reduces to single bool
+        structure_found = (signal_strength > 2.0 * noise_strength).any()
 
         # Note: In VAEs, sometimes the latent collapses or is distributed.
         # But with 100 samples and strong signal, it should find it.

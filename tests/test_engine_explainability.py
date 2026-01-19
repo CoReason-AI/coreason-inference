@@ -8,7 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -39,31 +38,41 @@ class TestEngineExplainability:
         with pytest.raises(ValueError, match="Pipeline not run"):
             engine.explain_latents()
 
-    def test_explain_latents_flow(self, engine: InferenceEngine, mock_data: pd.DataFrame) -> None:
+    def test_explain_latents_flow(
+        self, engine: InferenceEngine, mock_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """
         Test the successful flow of explain_latents.
         Mocks LatentMiner to avoid expensive SHAP calculation.
         """
-        # Mock internal components to skip heavy computation
-        # We cast to Any to avoid Mypy complaining about method assignment
-        cast(Any, engine.dynamics_engine).fit = MagicMock()
+        # Mock internal components to skip heavy computation using monkeypatch
+        # Note: We must patch the instance attributes on the 'engine' fixture.
 
-        # Use a real Pydantic model for CausalGraph to satisfy InferenceResult validation
+        # 1. Mock DynamicsEngine
+        monkeypatch.setattr(engine.dynamics_engine, "fit", MagicMock())
         empty_graph = CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.9)
-        cast(Any, engine.dynamics_engine).discover_loops = MagicMock(return_value=empty_graph)
+        monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=empty_graph))
 
-        cast(Any, engine.latent_miner).fit = MagicMock()
+        # 2. Mock LatentMiner
+        monkeypatch.setattr(engine.latent_miner, "fit", MagicMock())
+
         # discover_latents returns random latents
-        cast(Any, engine.latent_miner).discover_latents = MagicMock(
+        mock_discover = MagicMock(
             return_value=pd.DataFrame({"Z_0": [0.1] * 5, "Z_1": [0.2] * 5}, index=mock_data.index)
         )
+        monkeypatch.setattr(engine.latent_miner, "discover_latents", mock_discover)
+
         # interpret_latents returns a dummy dataframe
         expected_explanation = pd.DataFrame({"feature_1": [0.5, 0.2], "feature_2": [0.3, 0.4]}, index=["Z_0", "Z_1"])
-        cast(Any, engine.latent_miner).interpret_latents = MagicMock(return_value=expected_explanation)
-        engine.latent_miner.model = MagicMock()  # Set model to not None
+        mock_interpret = MagicMock(return_value=expected_explanation)
+        monkeypatch.setattr(engine.latent_miner, "interpret_latents", mock_interpret)
 
-        cast(Any, engine.active_scientist).fit = MagicMock()
-        cast(Any, engine.active_scientist).propose_experiments = MagicMock(return_value=[])
+        # Set model to not None (directly setting attribute is fine if variable exists)
+        engine.latent_miner.model = MagicMock()
+
+        # 3. Mock ActiveScientist
+        monkeypatch.setattr(engine.active_scientist, "fit", MagicMock())
+        monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
 
         # Run analyze
         engine.analyze(data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"])
@@ -75,10 +84,11 @@ class TestEngineExplainability:
         assert explanation.equals(expected_explanation)
 
         # Verify interpret_latents was called with correct arguments
-        cast(MagicMock, engine.latent_miner.interpret_latents).assert_called_once()
+        # We need to access the mock object we created
+        mock_interpret.assert_called_once()
 
         # Check args passed to interpret_latents
-        call_args = cast(MagicMock, engine.latent_miner.interpret_latents).call_args
+        call_args = mock_interpret.call_args
         passed_df = call_args[0][0]
         passed_samples = call_args[1].get("samples")
 
