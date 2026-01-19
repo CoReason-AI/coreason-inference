@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,7 +17,8 @@ from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
-from coreason_inference.schema import CausalGraph, ExperimentProposal, InterventionResult
+from coreason_inference.analysis.virtual_simulator import VirtualSimulator
+from coreason_inference.schema import CausalGraph, ExperimentProposal, InterventionResult, OptimizationOutput
 from coreason_inference.utils.logger import logger
 
 
@@ -44,6 +45,7 @@ class InferenceEngine:
         self.dynamics_engine = DynamicsEngine()
         self.latent_miner = LatentMiner()
         self.active_scientist = ActiveScientist()
+        self.virtual_simulator = VirtualSimulator()
         # Estimator is instantiated per query usually, but we can keep a reference if needed.
         self.estimator: Optional[CausalEstimator] = None
 
@@ -166,3 +168,72 @@ class InferenceEngine:
 
         estimator = CausalEstimator(self.augmented_data)
         return estimator.estimate_effect(treatment, outcome, confounders)
+
+    def run_virtual_trial(
+        self,
+        optimization_result: OptimizationOutput,
+        treatment: str,
+        outcome: str,
+        confounders: List[str],
+        n_samples: int = 1000,
+        adverse_outcomes: List[str] | None = None,
+    ) -> Dict[str, object]:
+        """
+        Runs a virtual trial: Generates synthetic cohort based on optimized rules,
+        scans for safety risks, and simulates the treatment effect.
+
+        Args:
+            optimization_result: Output from RuleInductor containing new_criteria.
+            treatment: Treatment variable name.
+            outcome: Outcome variable name.
+            confounders: List of confounder names.
+            n_samples: Number of digital twins to generate.
+            adverse_outcomes: List of adverse outcome names for safety scanning.
+
+        Returns:
+            Dict: {
+                "cohort_size": int,
+                "safety_scan": List[str],
+                "simulation_result": InterventionResult
+            }
+        """
+        if self.latent_miner.model is None or self.graph is None:
+            raise ValueError("Model not fitted. Run analyze() first.")
+
+        logger.info("Running Virtual Phase 3 Trial...")
+
+        # 1. Generate Synthetic Cohort
+        cohort = self.virtual_simulator.generate_synthetic_cohort(
+            miner=self.latent_miner,
+            n_samples=n_samples,
+            rules=optimization_result.new_criteria,
+        )
+
+        if cohort.empty:
+            logger.warning("Virtual trial aborted: Cohort is empty after filtering.")
+            return {"cohort_size": 0, "safety_scan": [], "simulation_result": None}
+
+        # 2. Safety Scan
+        safety_flags = []
+        if adverse_outcomes:
+            safety_flags = self.virtual_simulator.scan_safety(
+                graph=self.graph, treatment=treatment, adverse_outcomes=adverse_outcomes
+            )
+
+        # 3. Simulate Effect
+        try:
+            sim_result = self.virtual_simulator.simulate_trial(
+                cohort=cohort,
+                treatment=treatment,
+                outcome=outcome,
+                confounders=confounders,
+            )
+        except Exception as e:
+            logger.error(f"Virtual trial simulation failed: {e}")
+            sim_result = None
+
+        return {
+            "cohort_size": len(cohort),
+            "safety_scan": safety_flags,
+            "simulation_result": sim_result,
+        }
