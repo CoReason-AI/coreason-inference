@@ -17,6 +17,7 @@ from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
+from coreason_inference.analysis.rule_inductor import RuleInductor
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
 from coreason_inference.schema import (
     CausalGraph,
@@ -52,6 +53,7 @@ class InferenceEngine:
         self.latent_miner = LatentMiner()
         self.active_scientist = ActiveScientist()
         self.virtual_simulator = VirtualSimulator()
+        self.rule_inductor = RuleInductor()
         # Estimator is instantiated per query usually, but we can keep a reference if needed.
         self.estimator: Optional[CausalEstimator] = None
 
@@ -59,6 +61,7 @@ class InferenceEngine:
         self.graph: Optional[CausalGraph] = None
         self.latents: Optional[pd.DataFrame] = None
         self.augmented_data: Optional[pd.DataFrame] = None
+        self.cate_estimates: Optional[pd.Series] = None
 
     def analyze(
         self,
@@ -174,6 +177,63 @@ class InferenceEngine:
 
         estimator = CausalEstimator(self.augmented_data)
         return estimator.estimate_effect(treatment, outcome, confounders)
+
+    def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
+        """
+        Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
+        Stores the estimates for subsequent rule induction.
+        """
+        if self.augmented_data is None:
+            raise ValueError("Data not available. Run analyze() first.")
+
+        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
+
+        # Instantiate estimator
+        estimator = CausalEstimator(self.augmented_data)
+
+        # Run estimation with 'forest' method
+        result = estimator.estimate_effect(
+            treatment=treatment, outcome=outcome, confounders=confounders, method="forest"
+        )
+
+        # Store CATE estimates
+        if result.cate_estimates:
+            self.cate_estimates = pd.Series(
+                result.cate_estimates, index=self.augmented_data.index, name=f"CATE_{treatment}_{outcome}"
+            )
+            logger.info(f"Stored {len(result.cate_estimates)} CATE estimates.")
+        else:
+            logger.warning("No CATE estimates returned from Causal Forest.")
+            self.cate_estimates = None
+
+        return result
+
+    def induce_rules(self, feature_cols: Optional[List[str]] = None) -> OptimizationOutput:
+        """
+        Induces rules to identify Super-Responders based on stored CATE estimates.
+
+        Args:
+            feature_cols: Optional list of columns to use as features for rule induction.
+                          If None, uses all numeric columns from augmented_data (excluding metadata).
+        """
+        if self.cate_estimates is None:
+            raise ValueError("No CATE estimates found. Run analyze_heterogeneity() first.")
+
+        if self.augmented_data is None:
+            raise ValueError("Data not available.")
+
+        # Determine features
+        if feature_cols:
+            features = self.augmented_data[feature_cols]
+        else:
+            # Select numeric types, exclude potential metadata/targets
+            # This is a heuristic. Ideally user provides features.
+            features = self.augmented_data.select_dtypes(include=["number"])
+
+        logger.info(f"Inducing rules using {features.shape[1]} features.")
+
+        self.rule_inductor.fit(features, self.cate_estimates)
+        return self.rule_inductor.induce_rules_with_data(features, self.cate_estimates)
 
     def run_virtual_trial(
         self,
