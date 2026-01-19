@@ -56,6 +56,14 @@ class TestCausalVAE:
         # Should not be exactly equal to mu (because of noise)
         assert not torch.allclose(z, mu)
 
+    def test_decode(self) -> None:
+        latent_dim = 5
+        input_dim = 10
+        model = CausalVAE(input_dim, latent_dim=latent_dim)
+        z = torch.randn(32, latent_dim)
+        x_hat = model.decode(z)
+        assert x_hat.shape == (32, input_dim)
+
 
 class TestLatentMiner:
     @pytest.fixture
@@ -95,3 +103,86 @@ class TestLatentMiner:
         miner = LatentMiner()
         with pytest.raises(ValueError, match="Model not trained"):
             miner.discover_latents(sample_data)
+
+    def test_generate(self, sample_data: pd.DataFrame) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=10)
+        miner.fit(sample_data)
+
+        # Generate data
+        n_samples = 50
+        generated_data = miner.generate(n_samples)
+
+        assert isinstance(generated_data, pd.DataFrame)
+        assert generated_data.shape == (n_samples, 3)
+        assert list(generated_data.columns) == ["x1", "x2", "x3"]
+
+        # Check values range (since original is ~N(0, 1), generated should be roughly within -5, 5)
+        assert generated_data.values.max() < 10
+        assert generated_data.values.min() > -10
+
+    def test_generate_without_fit_error(self) -> None:
+        miner = LatentMiner()
+        with pytest.raises(ValueError, match="Model not trained"):
+            miner.generate(10)
+
+    def test_generate_zero_samples(self, sample_data: pd.DataFrame) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=10)
+        miner.fit(sample_data)
+        generated_data = miner.generate(0)
+        assert isinstance(generated_data, pd.DataFrame)
+        assert generated_data.shape == (0, 3)
+        assert list(generated_data.columns) == ["x1", "x2", "x3"]
+
+    def test_generate_large_samples(self, sample_data: pd.DataFrame) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=10)
+        miner.fit(sample_data)
+        n = 1000
+        generated_data = miner.generate(n)
+        assert generated_data.shape == (n, 3)
+
+    def test_refit_updates_columns(self) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=2)
+
+        # Fit 1: Cols A, B
+        df1 = pd.DataFrame(np.random.randn(10, 2), columns=["A", "B"])
+        miner.fit(df1)
+        gen1 = miner.generate(5)
+        assert list(gen1.columns) == ["A", "B"]
+
+        # Fit 2: Cols C, D, E
+        df2 = pd.DataFrame(np.random.randn(10, 3), columns=["C", "D", "E"])
+        miner.fit(df2)
+        gen2 = miner.generate(5)
+        assert list(gen2.columns) == ["C", "D", "E"]
+        assert gen2.shape == (5, 3)
+
+    def test_generate_reproducibility(self, sample_data: pd.DataFrame) -> None:
+        miner = LatentMiner(latent_dim=2, epochs=10)
+        miner.fit(sample_data)
+
+        torch.manual_seed(123)
+        gen1 = miner.generate(10)
+
+        torch.manual_seed(123)
+        gen2 = miner.generate(10)
+
+        pd.testing.assert_frame_equal(gen1, gen2)
+
+    def test_generate_distribution_shift(self) -> None:
+        """
+        Verify that generated data respects the shift of the input data.
+        If input is shifted by +100, output should be around +100.
+        """
+        # Data centered at 100
+        n = 100
+        df = pd.DataFrame({"A": np.random.normal(100, 1, n)})
+
+        miner = LatentMiner(latent_dim=1, epochs=500, learning_rate=0.01)  # More epochs to learn mean
+        miner.fit(df)
+
+        gen = miner.generate(50)
+        mean_val = gen["A"].mean()
+
+        # VAEs with standard scaler should reconstruct the mean reasonably well.
+        # Allow some margin (e.g., +/- 5)
+        assert 90 < mean_val < 110
