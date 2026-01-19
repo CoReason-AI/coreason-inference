@@ -36,6 +36,16 @@ def test_generate_synthetic_cohort_no_rules(simulator: VirtualSimulator, mock_mi
     assert list(cohort.columns) == ["A", "B", "C"]
 
 
+def test_generate_synthetic_cohort_miner_empty(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
+    """Test when miner returns empty DataFrame."""
+    mock_miner.generate.return_value = pd.DataFrame()
+
+    cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5)
+
+    assert cohort.empty
+    mock_miner.generate.assert_called_once_with(5)
+
+
 def test_generate_synthetic_cohort_with_filtering(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
     """Test generation with inclusion criteria."""
     rules = [
@@ -148,8 +158,13 @@ def test_scan_safety(simulator: VirtualSimulator) -> None:
 
 def test_scan_safety_path_error(simulator: VirtualSimulator) -> None:
     """Test error handling during path finding."""
-    nodes = [CausalNode(id="A", codex_concept_id=1, is_latent=False)]
-    graph = CausalGraph(nodes=nodes, edges=[], loop_dynamics=[], stability_score=0.0)
+    # Ensure treatment 'A' is in the graph by adding an edge, so we pass the "not in G" check.
+    nodes = [
+        CausalNode(id="A", codex_concept_id=1, is_latent=False),
+        CausalNode(id="B", codex_concept_id=2, is_latent=False),
+    ]
+    # Edge A->B ensures A is in G
+    graph = CausalGraph(nodes=nodes, edges=[("A", "B")], loop_dynamics=[], stability_score=0.0)
 
     # We need to mock nx.has_path to return True but shortest_path to raise
     with patch("networkx.has_path", return_value=True):
@@ -191,6 +206,10 @@ def test_simulate_trial_validation(simulator: VirtualSimulator) -> None:
     with pytest.raises(ValueError, match="Outcome 'Y' not found"):
         simulator.simulate_trial(cohort, "Drug", "Y", [])
 
+    # Missing treatment
+    with pytest.raises(ValueError, match="Treatment 'Z' not found"):
+        simulator.simulate_trial(cohort, "Z", "Drug", [])
+
     # Empty cohort
     with pytest.raises(ValueError, match="empty cohort"):
         simulator.simulate_trial(pd.DataFrame(), "Drug", "Y", [])
@@ -211,18 +230,8 @@ def test_simulate_trial_failure(mock_estimator_cls: MagicMock, simulator: Virtua
 def test_apply_rules_error(simulator: VirtualSimulator) -> None:
     """Test exception handling within rule application loop."""
     df = pd.DataFrame({"val": [1, 2, 3]})
-    # Rule that might cause error?
-    # Hard to force pd error with simple types.
-    # We can mock the dataframe's __getitem__ but that's complex for the loop.
-    # Instead, let's subclass DataFrame to raise error on filter.
 
-    # Alternatively, pass a rule where value comparison fails, e.g. string vs float?
-    # Pandas usually handles that without crashing (just False).
-    # Let's try to patch the filtering line in the method?
-    # Or just rely on coverage reports to see if we can trigger it.
-
-    # Triggering the `except Exception` block in `_apply_rules`.
-    # Let's pass a rule with an object that raises error on comparison.
+    # We use a mocked BadObj to trigger exception during comparison in _apply_rules
     class BadObj:
         def __lt__(self, other: Any) -> Any:
             raise Exception("Comparison Error")
@@ -236,19 +245,7 @@ def test_apply_rules_error(simulator: VirtualSimulator) -> None:
         def __ge__(self, other: Any) -> Any:
             raise Exception("Comparison Error")
 
-    # The rule value is float in schema but let's force it if possible,
-    # or rely on dataframe column being incompatible.
-
-    # Actually, schema enforces float.
-    # Let's create a dataframe column with objects that fail comparison with float?
-    # No, simple types are robust.
-
-    # Let's skip trying to force the exception block if it's purely defensive.
-    # But for 100% coverage we need it.
-
-    # We can patch the DataFrame operator.
-    # `filtered_data[feature] > val` calls `__gt__`.
-
+    # To trigger the except block in _apply_rules, we patch pandas Series comparison.
     with patch("pandas.Series.__gt__", side_effect=Exception("Filter Error")):
         # Only applies to Series > ...
         res = simulator._apply_rules(df, [ProtocolRule(feature="val", operator=">", value=0, rationale="")])
