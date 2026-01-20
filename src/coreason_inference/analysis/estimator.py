@@ -138,16 +138,24 @@ class CausalEstimator:
         status = RefutationStatus.FAILED if refutation_passed else RefutationStatus.PASSED
         logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
 
+        # Invalidate result if refutation fails
+        final_effect: Optional[float] = effect_value
+        final_cate = cate_estimates
+        if status == RefutationStatus.FAILED:
+            logger.warning(f"Estimate invalidated due to failed refutation for {treatment}->{outcome}")
+            final_effect = None
+            final_cate = None
+
         # Confidence Interval
         ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
 
         result = InterventionResult(
             patient_id=result_patient_id,
             intervention=f"do({treatment})",
-            counterfactual_outcome=effect_value,
+            counterfactual_outcome=final_effect,
             confidence_interval=(ci_low, ci_high),
             refutation_status=status,
-            cate_estimates=cate_estimates,
+            cate_estimates=final_cate,
         )
 
         return result

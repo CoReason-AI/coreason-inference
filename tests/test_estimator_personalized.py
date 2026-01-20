@@ -43,6 +43,7 @@ def test_estimator_personalized_inference() -> None:
     assert result.patient_id == target_pid
     # Forest estimate should be positive and significant (e.g. > 5.0)
     # We relax the check to avoid flakiness, as Forests can smooth extrema.
+    assert result.counterfactual_outcome is not None
     assert result.counterfactual_outcome > 5.0
 
     # 2. Test retrieving for first patient (X ~ -1, Effect ~ -10)
@@ -58,6 +59,7 @@ def test_estimator_personalized_inference() -> None:
     )
 
     assert result_2.patient_id == target_pid_2
+    assert result_2.counterfactual_outcome is not None
     assert result_2.counterfactual_outcome < -5.0
 
 

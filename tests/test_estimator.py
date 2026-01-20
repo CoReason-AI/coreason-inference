@@ -33,6 +33,7 @@ def test_estimator_linear_synthetic() -> None:
 
     # Check accuracy (allow some tolerance)
     # Result object has counterfactual_outcome which stores the effect
+    assert result.counterfactual_outcome is not None
     assert 0.9 <= result.counterfactual_outcome <= 1.1
     # Check refutation
     assert result.refutation_status == "PASSED"
@@ -57,6 +58,7 @@ def test_estimator_binary_treatment() -> None:
 
     # True effect is 2.0
     # DML might be slightly less precise with small N, loosen bounds
+    assert result.counterfactual_outcome is not None
     assert 1.8 <= result.counterfactual_outcome <= 2.2
     assert result.refutation_status == "PASSED"
 
