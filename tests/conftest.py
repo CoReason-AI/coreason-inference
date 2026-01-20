@@ -8,8 +8,8 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
+from typing import Generator
 from unittest.mock import MagicMock, patch
-from typing import Generator, Any
 
 import pytest
 
@@ -36,8 +36,8 @@ def mock_causal_model() -> Generator[MagicMock, None, None]:
         # Default Refutation Mock (Passing)
         mock_refutation = MagicMock()
         mock_refutation.refutation_result = {
-            "is_statistically_significant": False, # PASSED
-            "p_value": 0.5
+            "is_statistically_significant": False,  # PASSED
+            "p_value": 0.5,
         }
         mock_instance.refute_estimate.return_value = mock_refutation
 

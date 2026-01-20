@@ -51,7 +51,7 @@ def test_refutation_failure_wipes_cate_estimates(mock_causal_model: MagicMock) -
     # Mock FAILED Refutation (Significant Placebo Effect)
     mock_instance.refute_estimate.return_value.refutation_result = {
         "is_statistically_significant": True,
-        "p_value": 0.001
+        "p_value": 0.001,
     }
 
     result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST)
@@ -81,14 +81,14 @@ def test_refutation_failure_invalidates_personalized_inference(mock_causal_model
     mock_estimate.value = 5.0
 
     # Setup CATEs so we can extract for P1 (index 0)
-    mock_econml = MagicMock()
     cates = np.zeros((10, 1))
     cates[0] = 99.0  # Specific value for P1
     mock_estimate.estimator.effect.return_value = cates
 
     # Mock FAILED Refutation
     mock_instance.refute_estimate.return_value.refutation_result = {
-        "is_statistically_significant": True, "p_value": 0.02
+        "is_statistically_significant": True,
+        "p_value": 0.02,
     }
 
     result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1")
@@ -108,7 +108,9 @@ def test_refutation_failure_invalidates_personalized_inference(mock_causal_model
         (0.05, RefutationStatus.FAILED, False),  # p <= 0.05 -> Null rejected -> Invalid (Standard significance)
     ],
 )
-def test_refutation_boundary_logic(mock_causal_model: MagicMock, p_value: float, expected_status: str, is_valid: bool) -> None:
+def test_refutation_boundary_logic(
+    mock_causal_model: MagicMock, p_value: float, expected_status: str, is_valid: bool
+) -> None:
     """
     Edge Case: Boundary testing for p-values.
     """
@@ -122,7 +124,8 @@ def test_refutation_boundary_logic(mock_causal_model: MagicMock, p_value: float,
 
     # Override Refutation
     mock_instance.refute_estimate.return_value.refutation_result = {
-        "is_statistically_significant": is_sig, "p_value": p_value
+        "is_statistically_significant": is_sig,
+        "p_value": p_value,
     }
 
     result = estimator.estimate_effect("T", "Y", ["X"])
@@ -149,7 +152,8 @@ def test_binary_treatment_refutation_failure(mock_causal_model: MagicMock) -> No
 
     # Mock FAILED
     mock_instance.refute_estimate.return_value.refutation_result = {
-        "is_statistically_significant": True, "p_value": 0.01
+        "is_statistically_significant": True,
+        "p_value": 0.01,
     }
 
     result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True)
