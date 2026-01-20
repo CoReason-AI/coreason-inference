@@ -24,12 +24,14 @@ def test_refutation_failure_wipes_cate_estimates() -> None:
     If refutation fails, ensure 'cate_estimates' (which are expensive to compute)
     are also invalidated (set to None) to prevent usage of a flawed model.
     """
-    data = pd.DataFrame({
-        "T": np.random.binomial(1, 0.5, 10),
-        "Y": np.random.randn(10),
-        "X": np.random.randn(10),
-        "patient_id": [str(i) for i in range(10)]
-    })
+    data = pd.DataFrame(
+        {
+            "T": np.random.binomial(1, 0.5, 10),
+            "Y": np.random.randn(10),
+            "X": np.random.randn(10),
+            "patient_id": [str(i) for i in range(10)],
+        }
+    )
     estimator = CausalEstimator(data)
 
     with patch("coreason_inference.analysis.estimator.CausalModel") as MockModel:
@@ -50,10 +52,7 @@ def test_refutation_failure_wipes_cate_estimates() -> None:
 
         # Mock FAILED Refutation (Significant Placebo Effect)
         mock_refutation = MagicMock()
-        mock_refutation.refutation_result = {
-            "is_statistically_significant": True,
-            "p_value": 0.001
-        }
+        mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.001}
         mock_instance.refute_estimate.return_value = mock_refutation
 
         result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST)
@@ -68,12 +67,14 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
     Edge Case: User asks for a specific patient's effect (target_patient_id).
     If the global model fails refutation, the personalized estimate must also be invalid.
     """
-    data = pd.DataFrame({
-        "T": [0, 1] * 5,
-        "Y": np.random.randn(10),
-        "X": np.random.randn(10),
-        "patient_id": ["P1"] + [str(i) for i in range(9)]
-    })
+    data = pd.DataFrame(
+        {
+            "T": [0, 1] * 5,
+            "Y": np.random.randn(10),
+            "X": np.random.randn(10),
+            "patient_id": ["P1"] + [str(i) for i in range(9)],
+        }
+    )
     estimator = CausalEstimator(data)
 
     with patch("coreason_inference.analysis.estimator.CausalModel") as MockModel:
@@ -87,7 +88,7 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
         # Setup CATEs so we can extract for P1 (index 0)
         mock_econml = MagicMock()
         cates = np.zeros((10, 1))
-        cates[0] = 99.0 # Specific value for P1
+        cates[0] = 99.0  # Specific value for P1
         mock_econml.effect.return_value = cates
         mock_estimate.estimator = mock_econml
 
@@ -95,17 +96,10 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
 
         # Mock FAILED Refutation
         mock_refutation = MagicMock()
-        mock_refutation.refutation_result = {
-            "is_statistically_significant": True,
-            "p_value": 0.02
-        }
+        mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.02}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect(
-            "T", "Y", ["X"],
-            method=METHOD_FOREST,
-            target_patient_id="P1"
-        )
+        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1")
 
         assert result.patient_id == "P1"
         assert result.refutation_status == RefutationStatus.FAILED
@@ -114,11 +108,14 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
         assert result.cate_estimates is None
 
 
-@pytest.mark.parametrize("p_value, expected_status, is_valid", [
-    (0.06, RefutationStatus.PASSED, True),  # p > 0.05 -> Null accepted (Placebo has no effect) -> Valid
-    (0.04, RefutationStatus.FAILED, False), # p < 0.05 -> Null rejected (Placebo has effect) -> Invalid
-    (0.05, RefutationStatus.FAILED, False), # p <= 0.05 -> Null rejected -> Invalid (Standard significance)
-])
+@pytest.mark.parametrize(
+    "p_value, expected_status, is_valid",
+    [
+        (0.06, RefutationStatus.PASSED, True),  # p > 0.05 -> Null accepted (Placebo has no effect) -> Valid
+        (0.04, RefutationStatus.FAILED, False),  # p < 0.05 -> Null rejected (Placebo has effect) -> Invalid
+        (0.05, RefutationStatus.FAILED, False),  # p <= 0.05 -> Null rejected -> Invalid (Standard significance)
+    ],
+)
 def test_refutation_boundary_logic(p_value: float, expected_status: str, is_valid: bool) -> None:
     """
     Edge Case: Boundary testing for p-values.
@@ -144,10 +141,7 @@ def test_refutation_boundary_logic(p_value: float, expected_status: str, is_vali
 
         # Override for the test parametrization to ensure we test the logic *downstream* of DoWhy
         # We set the flag based on what DoWhy would likely output
-        mock_refutation.refutation_result = {
-            "is_statistically_significant": is_sig,
-            "p_value": p_value
-        }
+        mock_refutation.refutation_result = {"is_statistically_significant": is_sig, "p_value": p_value}
         mock_instance.refute_estimate.return_value = mock_refutation
 
         result = estimator.estimate_effect("T", "Y", ["X"])
@@ -169,7 +163,7 @@ def test_binary_treatment_refutation_failure() -> None:
     """
     Edge Case: Binary Treatment flag shouldn't bypass safety.
     """
-    data = pd.DataFrame({"T": [0,1], "Y": [0,1], "X": [0,1]})
+    data = pd.DataFrame({"T": [0, 1], "Y": [0, 1], "X": [0, 1]})
     estimator = CausalEstimator(data)
 
     with patch("coreason_inference.analysis.estimator.CausalModel") as MockModel:
@@ -182,16 +176,10 @@ def test_binary_treatment_refutation_failure() -> None:
 
         # Mock FAILED
         mock_refutation = MagicMock()
-        mock_refutation.refutation_result = {
-            "is_statistically_significant": True,
-            "p_value": 0.01
-        }
+        mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.01}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect(
-            "T", "Y", ["X"],
-            treatment_is_binary=True
-        )
+        result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True)
 
         assert result.refutation_status == RefutationStatus.FAILED
         assert result.counterfactual_outcome is None
