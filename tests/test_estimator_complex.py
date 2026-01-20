@@ -131,7 +131,7 @@ def test_refutation_failure_logic(synthetic_data: pd.DataFrame) -> None:
         result = estimator.estimate_effect("treatment", "outcome", ["confounder"])
 
         assert result.refutation_status == "FAILED"
-        assert result.counterfactual_outcome == 10.0
+        assert result.counterfactual_outcome is None
 
 
 @pytest.fixture

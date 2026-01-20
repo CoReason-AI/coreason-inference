@@ -24,6 +24,9 @@ METHOD_FOREST = "forest"
 DML_LINEAR_BACKEND = "backdoor.econml.dml.LinearDML"
 DML_FOREST_BACKEND = "backdoor.econml.dml.CausalForestDML"
 
+REFUTER_METHOD = "placebo_treatment_refuter"
+REFUTER_TYPE = "permute"
+
 
 class CausalEstimator:
     """
@@ -126,17 +129,15 @@ class CausalEstimator:
             logger.info(f"Estimated Effect (ATE): {effect_value}")
 
         # 4. Refute Estimate (Placebo Test)
-        refutation = model.refute_estimate(
-            identified_estimand,
-            estimate,
-            method_name="placebo_treatment_refuter",
-            placebo_type="permute",
-            num_simulations=num_simulations,
-        )
+        status = self._validate_refutation(model, identified_estimand, estimate, num_simulations)
 
-        refutation_passed = refutation.refutation_result["is_statistically_significant"]
-        status = RefutationStatus.FAILED if refutation_passed else RefutationStatus.PASSED
-        logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
+        # Invalidate result if refutation fails
+        final_effect: Optional[float] = effect_value
+        final_cate = cate_estimates
+        if status == RefutationStatus.FAILED:
+            logger.warning(f"Estimate invalidated due to failed refutation for {treatment}->{outcome}")
+            final_effect = None
+            final_cate = None
 
         # Confidence Interval
         ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
@@ -144,10 +145,10 @@ class CausalEstimator:
         result = InterventionResult(
             patient_id=result_patient_id,
             intervention=f"do({treatment})",
-            counterfactual_outcome=effect_value,
+            counterfactual_outcome=final_effect,
             confidence_interval=(ci_low, ci_high),
             refutation_status=status,
-            cate_estimates=cate_estimates,
+            cate_estimates=final_cate,
         )
 
         return result
@@ -185,6 +186,31 @@ class CausalEstimator:
         except Exception as e:
             logger.warning(f"Could not extract CATE estimates: {e}")
             return None
+
+    def _validate_refutation(
+        self, model: CausalModel, identified_estimand: Any, estimate: Any, num_simulations: int
+    ) -> RefutationStatus:
+        """
+        Runs a placebo refutation test and determines validity.
+        """
+        try:
+            refutation = model.refute_estimate(
+                identified_estimand,
+                estimate,
+                method_name=REFUTER_METHOD,
+                placebo_type=REFUTER_TYPE,
+                num_simulations=num_simulations,
+            )
+            # p_value <= 0.05 implies the Placebo has a significant effect (BAD) -> FAILED
+            is_significant = refutation.refutation_result["is_statistically_significant"]
+            status = RefutationStatus.FAILED if is_significant else RefutationStatus.PASSED
+            logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
+            return status
+        except Exception as e:
+            logger.error(f"Refutation check failed: {e}")
+            # Fail-safe: If refutation crashes, we should probably assume FAILED or raise
+            # For now, let's assume FAILED to be safe.
+            return RefutationStatus.FAILED
 
     def _extract_confidence_intervals(self, estimate: Any, default_value: float) -> Tuple[float, float]:
         """

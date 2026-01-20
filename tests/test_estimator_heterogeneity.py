@@ -27,6 +27,7 @@ def test_estimator_heterogeneity_linear_regression() -> None:
     assert result.cate_estimates is None
     assert result.patient_id == "POPULATION_ATE"
     # Effect should be roughly 1.0
+    assert result.counterfactual_outcome is not None
     assert 0.8 < result.counterfactual_outcome < 1.2
     assert result.refutation_status == RefutationStatus.PASSED or result.refutation_status == RefutationStatus.FAILED
     # Placebo usually passes (FAILED to reject null of 0 effect on placebo) -> Status PASSED
