@@ -170,12 +170,13 @@ class LatentMiner:
     def generate(self, n_samples: int) -> pd.DataFrame:
         """
         Generates synthetic data ('Digital Twins') by sampling from the latent space.
+        RETROFIT: Now returns both the reconstructed features AND the latent variables.
 
         Args:
             n_samples: Number of synthetic samples to generate.
 
         Returns:
-            pd.DataFrame: Generated data in the original feature space.
+            pd.DataFrame: Generated data (Features + Latents).
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
@@ -183,19 +184,27 @@ class LatentMiner:
         if n_samples <= 0:
             return pd.DataFrame(columns=self.feature_names)
 
-        # Sample from Prior N(0, I)
+        # 1. Sample from Prior N(0, I)
         z = torch.randn(n_samples, self.latent_dim, device=self.device)
 
-        # Decode
+        # 2. Decode to Observation Space
         self.model.eval()
         with torch.no_grad():
             x_hat_scaled = self.model.decode(z).cpu().numpy()
 
-        # Inverse Transform
+        # 3. Inverse Transform Scaler
         x_hat = self.scaler.inverse_transform(x_hat_scaled)
 
-        # Return DataFrame
-        return pd.DataFrame(x_hat, columns=self.feature_names)
+        # 4. Construct DataFrame with Features
+        df_gen = pd.DataFrame(x_hat, columns=self.feature_names)
+
+        # 5. [FIX] Append Latent Variables to the DataFrame
+        z_np = z.cpu().numpy()
+        latent_cols = [f"Z_{i}" for i in range(self.latent_dim)]
+        df_latents = pd.DataFrame(z_np, columns=latent_cols)
+
+        # Combine Features and Latents
+        return pd.concat([df_gen, df_latents], axis=1)
 
     def discover_latents(self, data: pd.DataFrame) -> pd.DataFrame:
         """

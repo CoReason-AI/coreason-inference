@@ -113,8 +113,8 @@ class TestLatentMiner:
         generated_data = miner.generate(n_samples)
 
         assert isinstance(generated_data, pd.DataFrame)
-        assert generated_data.shape == (n_samples, 3)
-        assert list(generated_data.columns) == ["x1", "x2", "x3"]
+        assert generated_data.shape == (n_samples, 5)  # 3 features + 2 latents
+        assert list(generated_data.columns) == ["x1", "x2", "x3", "Z_0", "Z_1"]
 
         # Check values range (since original is ~N(0, 1), generated should be roughly within -5, 5)
         assert generated_data.values.max() < 10
@@ -138,7 +138,7 @@ class TestLatentMiner:
         miner.fit(sample_data)
         n = 1000
         generated_data = miner.generate(n)
-        assert generated_data.shape == (n, 3)
+        assert generated_data.shape == (n, 5)  # 3 features + 2 latents
 
     def test_refit_updates_columns(self) -> None:
         miner = LatentMiner(latent_dim=2, epochs=2)
@@ -147,14 +147,14 @@ class TestLatentMiner:
         df1 = pd.DataFrame(np.random.randn(10, 2), columns=["A", "B"])
         miner.fit(df1)
         gen1 = miner.generate(5)
-        assert list(gen1.columns) == ["A", "B"]
+        assert list(gen1.columns) == ["A", "B", "Z_0", "Z_1"]
 
         # Fit 2: Cols C, D, E
         df2 = pd.DataFrame(np.random.randn(10, 3), columns=["C", "D", "E"])
         miner.fit(df2)
         gen2 = miner.generate(5)
-        assert list(gen2.columns) == ["C", "D", "E"]
-        assert gen2.shape == (5, 3)
+        assert list(gen2.columns) == ["C", "D", "E", "Z_0", "Z_1"]
+        assert gen2.shape == (5, 5)  # 3 features + 2 latents
 
     def test_generate_reproducibility(self, sample_data: pd.DataFrame) -> None:
         miner = LatentMiner(latent_dim=2, epochs=10)
