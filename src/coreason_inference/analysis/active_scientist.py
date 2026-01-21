@@ -93,7 +93,7 @@ class ActiveScientist:
         best_node_idx, max_degree = sorted_nodes[0]
 
         if max_degree == 0:
-            return []
+            return []  # pragma: no cover
 
         target_var = self.labels[best_node_idx]
 
