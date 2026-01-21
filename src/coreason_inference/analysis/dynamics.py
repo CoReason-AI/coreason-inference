@@ -15,11 +15,10 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.preprocessing import StandardScaler
-from torchdiffeq import odeint
-
 from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
 from coreason_inference.utils.logger import logger
+from sklearn.preprocessing import StandardScaler
+from torchdiffeq import odeint
 
 
 class ODEFunc(nn.Module):  # type: ignore[misc]

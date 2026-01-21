@@ -2,8 +2,6 @@
 # Licensed under the Prosperity Public License 3.0.0
 
 import pytest
-from pydantic import ValidationError
-
 from coreason_inference.schema import (
     CausalGraph,
     CausalNode,
@@ -12,6 +10,7 @@ from coreason_inference.schema import (
     LoopType,
     RefutationStatus,
 )
+from pydantic import ValidationError
 
 
 def test_loop_type_enum() -> None:

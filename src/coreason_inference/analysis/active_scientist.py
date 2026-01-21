@@ -8,12 +8,11 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List
+from typing import Dict, List, Tuple
 
 import networkx as nx
 import pandas as pd
 from causallearn.search.ConstraintBased.PC import pc
-
 from coreason_inference.schema import ExperimentProposal
 from coreason_inference.utils.logger import logger
 
@@ -43,120 +42,95 @@ class ActiveScientist:
         logger.info(f"Fitting ActiveScientist (PC Algorithm) to {len(self.labels)} variables.")
 
         # Run PC Algorithm
-        # Returns:
-        # cg: CausalGraph object (has .G, .nodes, etc.)
-        # Note: causal-learn's PC returns a GeneralGraph object.
         try:
             cg = pc(data.values, alpha=0.05, verbose=False)
         except Exception as e:
             logger.error(f"PC Algorithm failed: {e}")
             raise e
 
-        # Extract graph structure
-        # In causal-learn, undirected edges are represented differently depending on the graph type.
-        # GeneralGraph usually has:
-        # - 1 for circle (o)
-        # - 2 for arrowhead (>)
-        # - 3 for tail (-)
-        #
-        # Edges in cg.G.graph are stored as (i, j) -> type
-        # Or we can iterate nodes.
-        # Let's use the adjacency matrix or edge list provided by the library.
-        # cg.G.graph is a numpy array for GeneralGraph? No, let's check basic usage.
-        # Usually `cg.G.graph` is the adjacency matrix.
-        #
-        # Representation in causal-learn GeneralGraph:
-        # matrix[i, j] = Endpoint at j from i.
-        # -1: No edge
-        # 0: Null (No edge) - Wait, usually -1 or 0 depending on implementation.
-        #
-        # Let's rely on `cg.G.get_adj_matrix()` or similar if available, or just parse `cg.G.graph`.
-        # Assuming `cg.G.graph` is available.
-
+        # Extract graph structure (Adjacency Matrix)
         self.cpdag = cg.G.graph
 
     def propose_experiments(self) -> List[ExperimentProposal]:
         """
-        Identifies undirected edges in the CPDAG and proposes experiments to resolve directionality.
+        Identifies undirected edges in the CPDAG and proposes the single best experiment
+        that resolves the most ambiguity (Information Gain Heuristic).
 
         Returns:
-            List[ExperimentProposal]: A list of proposals.
+            List[ExperimentProposal]: A list containing the optimal proposal.
         """
         if self.cpdag is None:
             raise ValueError("Model not fitted. Call fit() first.")
 
-        proposals = []
+        undirected_edges = self._get_undirected_edges()
+
+        if not undirected_edges:
+            logger.info("No ambiguous edges found. No experiments needed.")
+            return []
+
+        # Calculate heuristic score for each candidate node
+        # Score = Number of undirected edges incident to the node.
+        # This approximates Information Gain (Centrality in the ambiguity graph).
+        candidates: Dict[int, int] = {}
+        for u, v in undirected_edges:
+            candidates[u] = candidates.get(u, 0) + 1
+            candidates[v] = candidates.get(v, 0) + 1
+
+        # Select candidate with max score
+        best_node_idx = -1
+        max_score = -1
+
+        for node_idx, score in candidates.items():
+            if score > max_score:
+                max_score = score
+                best_node_idx = node_idx
+            elif score == max_score:
+                # Tie-breaking: lower index for determinism, or random.
+                # Here we stick to lower index (implied by loop order if dict is ordered, but explicit check is better)
+                if node_idx < best_node_idx:
+                    best_node_idx = node_idx
+
+        if best_node_idx == -1:
+            return []
+
+        target_var = self.labels[best_node_idx]
+        logger.info(f"Selected optimal intervention target: {target_var} (Resolves {max_score} edges)")
+
+        rationale = (
+            f"Ambiguity detected in {len(undirected_edges)} edges. "
+            f"Intervening on {target_var} is calculated to resolve {max_score} ambiguous edges "
+            f"(Heuristic: Degree Centrality)."
+        )
+
+        proposal = ExperimentProposal(
+            target=target_var,
+            action="Intervention_Knockout",
+            confidence_gain="High",
+            rationale=rationale,
+        )
+
+        return [proposal]
+
+    def _get_undirected_edges(self) -> List[Tuple[int, int]]:
+        """
+        Identify all undirected edges in the CPDAG.
+        Returns a list of (i, j) tuples where i < j.
+        """
+        if self.cpdag is None:
+            return []
+
+        undirected = []
         n_nodes = len(self.labels)
 
-        # Parse adjacency matrix to find undirected edges
-        # In causal-learn:
-        # X -- Y is represented as:
-        # matrix[X, Y] = Endpoint at Y (Tail or Circle? In PC output (CPDAG), it is Tail-Tail or similar)
-        # Actually, in PC output (CPDAG):
-        # Directed: X -> Y  => matrix[i,j] = Arrow (-1->1 or similar?), matrix[j,i] = Tail
-        # Undirected: X - Y => matrix[i,j] = Tail, matrix[j,i] = Tail
-        #
-        # Endpoint constants in causal-learn:
-        # TAIL = -1 (or 1 in some versions?)
-        # ARROW = 1 (or 2?)
-        # CIRCLE = 2 (or ??)
-        #
-        # Let's look at `causallearn.graph.GraphClass.Endpoint`.
-        # Usually:
-        # TAIL = -1
-        # NULL = 0
-        # ARROW = 1
-        # CIRCLE = 2
-        #
-        # However, `pc` returns a `CausalGraph` wrapper usually.
-        # Let's assume standard behavior:
-        # directed X->Y: G[X,Y] = -1 (Tail at X), G[Y,X] = 1 (Arrow at Y)
-        # undirected X-Y: G[X,Y] = -1 (Tail), G[Y,X] = -1 (Tail) OR G[X,Y] = 1, G[Y,X] = 1?
-        #
-        # Actually, let's assume standard "Pattern" graph (CPDAG).
-        # Undirected edges are what we care about.
-
-        # We'll traverse the upper triangle to find undirected edges.
+        # Traverse upper triangle
         for i in range(n_nodes):
             for j in range(i + 1, n_nodes):
                 end_j = self.cpdag[i, j]  # Endpoint at j
                 end_i = self.cpdag[j, i]  # Endpoint at i
 
-                # Check for undirected edge
-                # Usually represented as Tail-Tail (-1, -1) or Circle-Circle?
-                # In PC, valid outputs are Directed or Undirected.
-                # If both ends are Tails (-1) or both ends are not Arrows?
-                #
-                # Let's be robust: If there is an edge (endpoint != 0) AND it's not fully directed.
-                # Fully directed means one is Arrow (1) and one is Tail (-1).
-                # Undirected means both are Tail (-1) or both are Arrow (shouldn't happen in CPDAG usually) or Circle.
-                #
-                # Let's assume standard causal-learn behavior for PC:
-                # -1: Tail
-                #  1: Arrow
+                # Valid edge (endpoints != 0) and Symmetric endpoints (e.g. Tail-Tail)
+                if end_j != 0 and end_i != 0:
+                    if end_j == end_i:
+                        undirected.append((i, j))
 
-                if end_j != 0 and end_i != 0:  # Edge exists
-                    if end_j == end_i:  # Symmetric endpoints -> Undirected (e.g. Tail-Tail)
-                        # Identify ambiguity
-                        var_a = self.labels[i]
-                        var_b = self.labels[j]
-
-                        # Propose experiment: Intervene on A to see if B changes
-                        rationale = (
-                            f"Ambiguous edge between {var_a} and {var_b}. "
-                            f"Intervening on {var_a} resolves directionality."
-                        )
-                        proposal = ExperimentProposal(
-                            target=var_a,
-                            action="Intervention_Knockout",  # Generic biological action
-                            confidence_gain="High",
-                            rationale=rationale,
-                        )
-                        proposals.append(proposal)
-
-                        # Also propose the reverse?
-                        # Usually one intervention is enough to orient the edge, but strictly we might propose either.
-                        # The user story says "Selects the Intervention ... that maximally splits".
-                        # For this atomic unit, proposing one valid intervention per undirected edge is sufficient.
-
-        return proposals
+        return undirected

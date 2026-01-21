@@ -6,7 +6,6 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-
 from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import InterventionResult, OptimizationOutput, RefutationStatus
 

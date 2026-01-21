@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-
 from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import (
     CausalGraph,

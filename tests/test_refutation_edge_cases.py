@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
-
 from coreason_inference.analysis.estimator import METHOD_FOREST, CausalEstimator
 from coreason_inference.schema import RefutationStatus
 

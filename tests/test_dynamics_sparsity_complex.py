@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-
 from coreason_inference.analysis.dynamics import DynamicsEngine
 
 
@@ -106,6 +105,6 @@ def test_disconnected_subgraphs() -> None:
     # Note: Cross-mag might not be strictly zero due to approximation, but should be small.
     # First, ensure model didn't collapse (Intra-block should be significant)
     assert intra_mag > 0.1, f"Model collapsed, intra-block magnitude too low: {intra_mag}"
-    assert cross_mag < intra_mag * 0.4, (
-        f"L1 Regularization failed to separate disconnected subgraphs. Cross: {cross_mag}, Intra: {intra_mag}"
-    )
+    assert (
+        cross_mag < intra_mag * 0.4
+    ), f"L1 Regularization failed to separate disconnected subgraphs. Cross: {cross_mag}, Intra: {intra_mag}"

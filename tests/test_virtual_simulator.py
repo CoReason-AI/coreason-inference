@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
 from coreason_inference.schema import CausalGraph, CausalNode, InterventionResult, ProtocolRule, RefutationStatus
