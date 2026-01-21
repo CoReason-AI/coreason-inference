@@ -18,7 +18,7 @@ from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.schema import ExperimentProposal
 
 
-@pytest.fixture  # type: ignore[misc]
+@pytest.fixture
 def synthetic_data() -> pd.DataFrame:
     """
     Generates synthetic data for A - B - C.
