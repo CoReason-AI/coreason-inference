@@ -8,20 +8,21 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
-from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
+from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
+from coreason_inference.utils.logger import logger
 
-class ODEFunc(nn.Module):  # type: ignore[misc]
+
+class ODEFunc(nn.Module):
     """
     Neural ODE function approximating dy/dt = f(y).
     This module uses a linear layer to allow for straightforward Jacobian extraction
@@ -43,7 +44,7 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
         Calculates the derivative dy/dt at time t.
         Neural ODEs often ignore 't' if the system is autonomous.
         """
-        return self.linear(y)
+        return cast(torch.Tensor, self.linear(y))
 
 
 class DynamicsEngine:
@@ -124,7 +125,7 @@ class DynamicsEngine:
 
             total_loss = mse_loss + l1_loss
 
-            total_loss.backward()
+            total_loss.backward() # type: ignore[no-untyped-call]
             optimizer.step()
 
             if epoch % 50 == 0:
