@@ -26,11 +26,14 @@ def mock_engine_with_data() -> InferenceEngine:
     return engine
 
 
-def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -> None:
-    """Test successful heterogeneity analysis and state update."""
+@pytest.fixture
+def mock_causal_graph() -> CausalGraph:
+    return CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.9)
 
-    # Mock CausalEstimator to return CATEs
-    mock_result = InterventionResult(
+
+@pytest.fixture
+def mock_intervention_result() -> InterventionResult:
+    return InterventionResult(
         patient_id="POPULATION_ATE",
         intervention="do(T)",
         counterfactual_outcome=0.5,
@@ -39,9 +42,24 @@ def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -
         cate_estimates=[0.1, 0.9, 0.2, 0.8],
     )
 
+
+@pytest.fixture
+def mock_optimization_output() -> OptimizationOutput:
+    return OptimizationOutput(
+        new_criteria=[ProtocolRule(feature="X1", operator=">", value=2.0, rationale="Test")],
+        original_pos=0.5,
+        optimized_pos=0.8,
+        safety_flags=[],
+    )
+
+
+def test_analyze_heterogeneity_success(
+    mock_engine_with_data: InferenceEngine, mock_intervention_result: InterventionResult
+) -> None:
+    """Test successful heterogeneity analysis and state update."""
     with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
         instance = MockEstimator.return_value
-        instance.estimate_effect.return_value = mock_result
+        instance.estimate_effect.return_value = mock_intervention_result
 
         result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1", "X2"])
 
@@ -51,7 +69,7 @@ def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -
         )
 
         # Verify result
-        assert result == mock_result
+        assert result == mock_intervention_result
 
         # Verify state update
         assert mock_engine_with_data.cate_estimates is not None
@@ -96,19 +114,13 @@ def test_analyze_heterogeneity_no_cate_returned(mock_engine_with_data: Inference
         assert mock_engine_with_data.cate_estimates is None
 
 
-def test_induce_rules_success(mock_engine_with_data: InferenceEngine) -> None:
+def test_induce_rules_success(
+    mock_engine_with_data: InferenceEngine, mock_optimization_output: OptimizationOutput
+) -> None:
     """Test successful rule induction."""
 
     # Setup state
     mock_engine_with_data.cate_estimates = pd.Series([0.1, 0.9, 0.2, 0.8], name="CATE_T_Y")
-
-    # Mock RuleInductor
-    mock_optimization_output = OptimizationOutput(
-        new_criteria=[ProtocolRule(feature="X1", operator=">", value=2.0, rationale="Test")],
-        original_pos=0.5,
-        optimized_pos=0.8,
-        safety_flags=[],
-    )
 
     # We patch the instance on the engine
     mock_engine_with_data.rule_inductor = MagicMock()
@@ -184,30 +196,26 @@ def test_induce_rules_data_missing_integrity() -> None:
         engine.induce_rules()
 
 
-def test_run_virtual_trial_success(mock_engine_with_data: InferenceEngine) -> None:
+def test_run_virtual_trial_success(
+    mock_engine_with_data: InferenceEngine,
+    mock_causal_graph: CausalGraph,
+    mock_optimization_output: OptimizationOutput,
+    mock_intervention_result: InterventionResult,
+) -> None:
     """Test successful virtual trial execution."""
     mock_engine_with_data.latent_miner.model = MagicMock()
-    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
-
-    mock_optimization_result = OptimizationOutput(new_criteria=[], original_pos=0.3, optimized_pos=0.7, safety_flags=[])
+    mock_engine_with_data.graph = mock_causal_graph
 
     mock_cohort = pd.DataFrame({"X1": [1, 2], "X2": [0.1, 0.2]})
-    mock_sim_result = InterventionResult(
-        patient_id="POPULATION_ATE",
-        intervention="do(T)",
-        counterfactual_outcome=0.6,
-        confidence_interval=(0.5, 0.7),
-        refutation_status=RefutationStatus.PASSED,
-    )
 
     # Mock generate_synthetic_cohort (used via self.virtual_simulator instance on engine)
     mock_engine_with_data.virtual_simulator = MagicMock()
     mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = mock_cohort
     mock_engine_with_data.virtual_simulator.scan_safety.return_value = ["Safety Warning"]
-    mock_engine_with_data.virtual_simulator.simulate_trial.return_value = mock_sim_result
+    mock_engine_with_data.virtual_simulator.simulate_trial.return_value = mock_intervention_result
 
     result = mock_engine_with_data.run_virtual_trial(
-        optimization_result=mock_optimization_result,
+        optimization_result=mock_optimization_output,
         treatment="T",
         outcome="Y",
         confounders=["X1"],
@@ -218,13 +226,13 @@ def test_run_virtual_trial_success(mock_engine_with_data: InferenceEngine) -> No
     assert isinstance(result, VirtualTrialResult)
     assert result.cohort_size == 2
     assert result.safety_scan == ["Safety Warning"]
-    assert result.simulation_result == mock_sim_result
+    assert result.simulation_result == mock_intervention_result
 
     # Verify calls
     mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.assert_called_once_with(
         miner=mock_engine_with_data.latent_miner,
         n_samples=50,
-        rules=mock_optimization_result.new_criteria,
+        rules=mock_optimization_output.new_criteria,
     )
     mock_engine_with_data.virtual_simulator.scan_safety.assert_called_once_with(
         graph=mock_engine_with_data.graph,
@@ -248,10 +256,10 @@ def test_run_virtual_trial_not_fitted() -> None:
         engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
 
 
-def test_run_virtual_trial_empty_cohort(mock_engine_with_data: InferenceEngine) -> None:
+def test_run_virtual_trial_empty_cohort(mock_engine_with_data: InferenceEngine, mock_causal_graph: CausalGraph) -> None:
     """Test handling of empty cohort generation."""
     mock_engine_with_data.latent_miner.model = MagicMock()
-    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
+    mock_engine_with_data.graph = mock_causal_graph
 
     mock_engine_with_data.virtual_simulator = MagicMock()
     mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = pd.DataFrame()
@@ -264,10 +272,12 @@ def test_run_virtual_trial_empty_cohort(mock_engine_with_data: InferenceEngine) 
     assert result.simulation_result is None
 
 
-def test_run_virtual_trial_simulation_failure(mock_engine_with_data: InferenceEngine) -> None:
+def test_run_virtual_trial_simulation_failure(
+    mock_engine_with_data: InferenceEngine, mock_causal_graph: CausalGraph
+) -> None:
     """Test graceful handling of simulation failure."""
     mock_engine_with_data.latent_miner.model = MagicMock()
-    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
+    mock_engine_with_data.graph = mock_causal_graph
 
     mock_engine_with_data.virtual_simulator = MagicMock()
     mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = pd.DataFrame({"A": [1]})
@@ -281,7 +291,7 @@ def test_run_virtual_trial_simulation_failure(mock_engine_with_data: InferenceEn
     assert result.simulation_result is None
 
 
-def test_analyze_latent_index_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_analyze_latent_index_mismatch(monkeypatch: pytest.MonkeyPatch, mock_causal_graph: CausalGraph) -> None:
     """
     Test edge case where LatentMiner returns data with mismatched index,
     checking if pd.concat produces NaNs (augmented_data integrity).
@@ -291,9 +301,8 @@ def test_analyze_latent_index_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Mock components
     monkeypatch.setattr(engine.dynamics_engine, "fit", MagicMock())
-    # Use real CausalGraph to satisfy Pydantic validation and attribute access
-    empty_graph = CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.0)
-    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=empty_graph))
+    # Use real CausalGraph
+    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=mock_causal_graph))
 
     monkeypatch.setattr(engine.latent_miner, "fit", MagicMock())
 
@@ -327,7 +336,7 @@ def test_analyze_heterogeneity_empty_confounders(mock_engine_with_data: Inferenc
             mock_engine_with_data.analyze_heterogeneity("T", "Y", [])
 
 
-def test_full_workflow_state_consistency(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_full_workflow_state_consistency(monkeypatch: pytest.MonkeyPatch, mock_causal_graph: CausalGraph) -> None:
     """
     Complex Scenario: Execute the full pipeline sequentially and verify state transitions.
     analyze -> analyze_heterogeneity -> induce_rules -> run_virtual_trial
@@ -336,10 +345,8 @@ def test_full_workflow_state_consistency(monkeypatch: pytest.MonkeyPatch) -> Non
     data = pd.DataFrame({"X": [1, 2, 3], "T": [0, 1, 0], "Y": [1, 2, 1], "time": [0, 1, 2]}, index=[0, 1, 2])
 
     # 1. Mock Analysis Components
-    # Use real graph
-    mock_graph = CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.9)
     monkeypatch.setattr(engine.dynamics_engine, "fit", MagicMock())
-    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=mock_graph))
+    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=mock_causal_graph))
 
     monkeypatch.setattr(engine.latent_miner, "fit", MagicMock())
     mock_latents = pd.DataFrame({"Z": [0.1, 0.2, 0.3]}, index=[0, 1, 2])
@@ -354,7 +361,7 @@ def test_full_workflow_state_consistency(monkeypatch: pytest.MonkeyPatch) -> Non
     engine.analyze(data, "time", ["X"])
 
     # Verify State after Analyze
-    assert engine.graph == mock_graph
+    assert engine.graph == mock_causal_graph
     assert engine.latents is not None
     assert engine.augmented_data is not None
     assert "Z" in engine.augmented_data.columns
