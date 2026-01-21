@@ -279,3 +279,143 @@ def test_run_virtual_trial_simulation_failure(mock_engine_with_data: InferenceEn
 
     assert result.cohort_size == 1
     assert result.simulation_result is None
+
+
+def test_analyze_latent_index_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Test edge case where LatentMiner returns data with mismatched index,
+    checking if pd.concat produces NaNs (augmented_data integrity).
+    """
+    engine = InferenceEngine()
+    data = pd.DataFrame({"X": [1, 2]}, index=[0, 1])
+
+    # Mock components
+    monkeypatch.setattr(engine.dynamics_engine, "fit", MagicMock())
+    # Use real CausalGraph to satisfy Pydantic validation and attribute access
+    empty_graph = CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.0)
+    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=empty_graph))
+
+    monkeypatch.setattr(engine.latent_miner, "fit", MagicMock())
+
+    # Mock discover_latents to return MISMATCHED index
+    mismatched_latents = pd.DataFrame({"Z": [0.1, 0.2]}, index=[2, 3])  # Different index than data
+    monkeypatch.setattr(engine.latent_miner, "discover_latents", MagicMock(return_value=mismatched_latents))
+
+    monkeypatch.setattr(engine.active_scientist, "fit", MagicMock())
+    monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
+
+    # Run analyze
+    # This should succeed but augmented_data will have NaNs due to concat
+    result = engine.analyze(data, "time", ["X"])
+
+    # Verify augmented_data
+    # data has indices 0,1. latents has 2,3.
+    # concat(axis=1) will result in indices 0,1,2,3 with NaNs.
+    assert len(result.augmented_data) == 4
+    assert result.augmented_data["X"].isna().sum() == 2  # Indices 2,3 will have NaN X
+    assert result.augmented_data["Z"].isna().sum() == 2  # Indices 0,1 will have NaN Z
+
+
+def test_analyze_heterogeneity_empty_confounders(mock_engine_with_data: InferenceEngine) -> None:
+    """Test error when confounders list is empty for forest method."""
+    with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
+        instance = MockEstimator.return_value
+        # EconML/CausalEstimator raises ValueError if X is empty
+        instance.estimate_effect.side_effect = ValueError("Effect modifiers cannot be empty")
+
+        with pytest.raises(ValueError, match="Effect modifiers cannot be empty"):
+            mock_engine_with_data.analyze_heterogeneity("T", "Y", [])
+
+
+def test_full_workflow_state_consistency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Complex Scenario: Execute the full pipeline sequentially and verify state transitions.
+    analyze -> analyze_heterogeneity -> induce_rules -> run_virtual_trial
+    """
+    engine = InferenceEngine()
+    data = pd.DataFrame({"X": [1, 2, 3], "T": [0, 1, 0], "Y": [1, 2, 1], "time": [0, 1, 2]}, index=[0, 1, 2])
+
+    # 1. Mock Analysis Components
+    # Use real graph
+    mock_graph = CausalGraph(nodes=[], edges=[], loop_dynamics=[], stability_score=0.9)
+    monkeypatch.setattr(engine.dynamics_engine, "fit", MagicMock())
+    monkeypatch.setattr(engine.dynamics_engine, "discover_loops", MagicMock(return_value=mock_graph))
+
+    monkeypatch.setattr(engine.latent_miner, "fit", MagicMock())
+    mock_latents = pd.DataFrame({"Z": [0.1, 0.2, 0.3]}, index=[0, 1, 2])
+    monkeypatch.setattr(engine.latent_miner, "discover_latents", MagicMock(return_value=mock_latents))
+    # Needed for virtual trial check
+    engine.latent_miner.model = MagicMock()
+
+    monkeypatch.setattr(engine.active_scientist, "fit", MagicMock())
+    monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
+
+    # 2. Run Analyze
+    engine.analyze(data, "time", ["X"])
+
+    # Verify State after Analyze
+    assert engine.graph == mock_graph
+    assert engine.latents is not None
+    assert engine.augmented_data is not None
+    assert "Z" in engine.augmented_data.columns
+    assert len(engine.augmented_data) == 3
+
+    # 3. Run Heterogeneity Analysis
+    mock_cate_result = InterventionResult(
+        patient_id="POPULATION_ATE",
+        intervention="do(T)",
+        counterfactual_outcome=0.5,
+        confidence_interval=(0.4, 0.6),
+        refutation_status=RefutationStatus.PASSED,
+        cate_estimates=[0.1, 0.5, 0.9],
+    )
+
+    with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
+        instance = MockEstimator.return_value
+        instance.estimate_effect.return_value = mock_cate_result
+
+        engine.analyze_heterogeneity("T", "Y", ["X", "Z"])
+
+    # Verify State after Heterogeneity
+    assert engine.cate_estimates is not None
+    assert len(engine.cate_estimates) == 3
+    assert engine._last_analysis_meta == {"treatment": "T", "outcome": "Y"}
+
+    # 4. Run Rule Induction
+    mock_opt_output = OptimizationOutput(
+        new_criteria=[ProtocolRule(feature="X", operator=">", value=1.5, rationale="Test")],
+        original_pos=0.3,
+        optimized_pos=0.8,
+        safety_flags=[],
+    )
+    # Patch rule inductor instance
+    engine.rule_inductor = MagicMock()
+    engine.rule_inductor.induce_rules_with_data.return_value = mock_opt_output
+
+    opt_result = engine.induce_rules(feature_cols=["X", "Z"])
+
+    assert opt_result == mock_opt_output
+
+    # 5. Run Virtual Trial
+    engine.virtual_simulator = MagicMock()
+    engine.virtual_simulator.generate_synthetic_cohort.return_value = pd.DataFrame({"X": [2], "Z": [0.2]})
+    engine.virtual_simulator.scan_safety.return_value = []
+    mock_vt_sim_result = InterventionResult(
+        patient_id="POPULATION_ATE",
+        intervention="do(T)",
+        counterfactual_outcome=0.8,
+        confidence_interval=(0.7, 0.9),
+        refutation_status=RefutationStatus.PASSED,
+    )
+    engine.virtual_simulator.simulate_trial.return_value = mock_vt_sim_result
+
+    vt_result = engine.run_virtual_trial(
+        optimization_result=opt_result,
+        treatment="T",
+        outcome="Y",
+        confounders=["X", "Z"],
+        n_samples=10,
+    )
+
+    assert vt_result.cohort_size == 1
+    assert vt_result.simulation_result == mock_vt_sim_result
