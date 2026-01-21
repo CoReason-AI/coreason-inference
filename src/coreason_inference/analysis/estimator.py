@@ -25,6 +25,10 @@ DML_LINEAR_BACKEND = "backdoor.econml.dml.LinearDML"
 DML_FOREST_BACKEND = "backdoor.econml.dml.CausalForestDML"
 
 
+class RefutationFailedError(Exception):
+    pass
+
+
 class CausalEstimator:
     """
     Estimates the causal effect of a treatment on an outcome using Double Machine Learning (DML)
@@ -139,12 +143,13 @@ class CausalEstimator:
         logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
 
         # Invalidate result if refutation fails
+        if status == RefutationStatus.FAILED:
+            msg = f"Estimate invalidated due to failed refutation for {treatment}->{outcome}"
+            logger.error(msg)
+            raise RefutationFailedError(msg)
+
         final_effect: Optional[float] = effect_value
         final_cate = cate_estimates
-        if status == RefutationStatus.FAILED:
-            logger.warning(f"Estimate invalidated due to failed refutation for {treatment}->{outcome}")
-            final_effect = None
-            final_cate = None
 
         # Confidence Interval
         ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
@@ -198,11 +203,11 @@ class CausalEstimator:
         """
         Safely extracts confidence intervals from the estimate.
         """
-        ci = estimate.get_confidence_intervals()
-        if ci is None:
-            return default_value, default_value
-
         try:
+            ci = estimate.get_confidence_intervals()
+            if ci is None:
+                return default_value, default_value
+
             if isinstance(ci, (tuple, list)):
                 ci_low, ci_high = ci[0], ci[1]
 

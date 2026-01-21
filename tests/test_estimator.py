@@ -12,8 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from coreason_inference.analysis.estimator import CausalEstimator
+from coreason_inference.analysis.estimator import CausalEstimator, RefutationFailedError
 
 
 def test_estimator_linear_synthetic() -> None:
@@ -98,6 +99,5 @@ def test_refutation_failure_flag() -> None:
         mock_instance.refute_estimate.return_value = mock_refute
 
         estimator = CausalEstimator(df)
-        result = estimator.estimate_effect("T", "Y", ["X"])
-
-        assert result.refutation_status == "FAILED"
+        with pytest.raises(RefutationFailedError):
+            estimator.estimate_effect("T", "Y", ["X"])

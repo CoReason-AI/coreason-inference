@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from coreason_inference.analysis.estimator import CausalEstimator
+from coreason_inference.analysis.estimator import CausalEstimator, RefutationFailedError
 
 
 def test_complex_binary_treatment() -> None:
@@ -128,10 +128,8 @@ def test_refutation_failure_logic(synthetic_data: pd.DataFrame) -> None:
         }
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("treatment", "outcome", ["confounder"])
-
-        assert result.refutation_status == "FAILED"
-        assert result.counterfactual_outcome is None
+        with pytest.raises(RefutationFailedError):
+            estimator.estimate_effect("treatment", "outcome", ["confounder"])
 
 
 @pytest.fixture

@@ -12,14 +12,14 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from coreason_inference.analysis.estimator import CausalEstimator
-from coreason_inference.schema import RefutationStatus
+from coreason_inference.analysis.estimator import CausalEstimator, RefutationFailedError
 
 
 def test_estimate_effect_refutation_failure_invalidates_result() -> None:
     """
-    Test that the estimator correctly invalidates the result (returns None)
+    Test that the estimator correctly invalidates the result (raises RefutationFailedError)
     when the refutation fails (is statistically significant).
     """
     # 1. Setup Data
@@ -56,10 +56,6 @@ def test_estimate_effect_refutation_failure_invalidates_result() -> None:
         }
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        # 3. Call Method
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
-
-        # 4. Assertions
-        assert result.refutation_status == RefutationStatus.FAILED
-        assert result.counterfactual_outcome is None
-        assert result.cate_estimates is None
+        # 3. Call Method & Assert Exception
+        with pytest.raises(RefutationFailedError, match="Estimate invalidated due to failed refutation"):
+            estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
