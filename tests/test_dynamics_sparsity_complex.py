@@ -30,7 +30,7 @@ def test_l1_high_regularization_collapse() -> None:
     engine.fit(data, time_col="time", variable_cols=cols)
 
     assert engine.model is not None
-    weights = engine.model.linear.weight.detach().numpy()
+    weights = engine.model.W.detach().numpy()
 
     # All weights should be extremely small because cost of non-zero weight is huge
     print(f"Weights (High Reg):\n{weights}")
@@ -83,7 +83,7 @@ def test_disconnected_subgraphs() -> None:
     engine = DynamicsEngine(epochs=1000, learning_rate=0.01, l1_lambda=0.1)
     engine.fit(data, time_col="time", variable_cols=cols)
     assert engine.model is not None
-    weights = engine.model.linear.weight.detach().numpy()
+    weights = engine.model.W.detach().numpy()
 
     # Weight Matrix Layout: Rows=Targets (A, B, C, D), Cols=Sources (A, B, C, D)
     # We expect Block Diagonal:

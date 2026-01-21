@@ -76,7 +76,6 @@ def test_generate_synthetic_cohort_with_filtering(simulator: VirtualSimulator, m
     # Batch 3: 2 survivors. Total 6. Stop.
     # Final: 6 rows, trimmed to 5.
 
-
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
 
     assert len(cohort) == 5
