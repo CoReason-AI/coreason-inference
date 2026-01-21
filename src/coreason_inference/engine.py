@@ -29,7 +29,7 @@ from coreason_inference.schema import (
 from coreason_inference.utils.logger import logger
 
 
-class InferenceResult(BaseModel):
+class InferenceResult(BaseModel):  # type: ignore[misc]
     """
     Container for the results of the full causal inference pipeline.
     """

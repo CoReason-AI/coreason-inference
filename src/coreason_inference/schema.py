@@ -19,18 +19,18 @@ class RefutationStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class LoopDynamics(BaseModel):
+class LoopDynamics(BaseModel):  # type: ignore[misc]
     path: List[str] = Field(..., min_length=2, description="List of node IDs forming the loop path")
     type: LoopType
 
 
-class CausalNode(BaseModel):
+class CausalNode(BaseModel):  # type: ignore[misc]
     id: str  # "variable_alt_level"
     codex_concept_id: int  # Linked to Ontology
     is_latent: bool  # True if discovered by VAE
 
 
-class CausalGraph(BaseModel):
+class CausalGraph(BaseModel):  # type: ignore[misc]
     nodes: List[CausalNode]
     edges: List[Tuple[str, str]]
     loop_dynamics: List[LoopDynamics]
@@ -85,7 +85,7 @@ class CausalGraph(BaseModel):
         return G
 
 
-class InterventionResult(BaseModel):
+class InterventionResult(BaseModel):  # type: ignore[misc]
     patient_id: str
     intervention: str  # "do(Drug_Dose = 50mg)"
     counterfactual_outcome: Optional[float] = Field(
@@ -98,28 +98,28 @@ class InterventionResult(BaseModel):
     )
 
 
-class ExperimentProposal(BaseModel):
+class ExperimentProposal(BaseModel):  # type: ignore[misc]
     target: str = Field(..., description="The target variable to intervene on (e.g., 'Gene_A')")
     action: str = Field(..., description="The action to perform (e.g., 'CRISPR_Knockout')")
     confidence_gain: str = Field(..., description="Expected confidence gain (e.g., 'High')")
     rationale: str = Field(..., description="Explanation for the experiment (e.g., 'Resolve direction A-B')")
 
 
-class ProtocolRule(BaseModel):
+class ProtocolRule(BaseModel):  # type: ignore[misc]
     feature: str = Field(..., description="The feature name (e.g., 'Albumin')")
     operator: str = Field(..., description="The operator (e.g., '<', '>=')")
     value: float = Field(..., description="The threshold value")
     rationale: str = Field(..., description="Reason for this rule (e.g., 'High CATE driver')")
 
 
-class OptimizationOutput(BaseModel):
+class OptimizationOutput(BaseModel):  # type: ignore[misc]
     new_criteria: List[ProtocolRule]
     original_pos: float = Field(..., description="Baseline Probability of Success / Response Rate")
     optimized_pos: float = Field(..., description="Optimized Probability of Success in subgroup")
     safety_flags: List[str] = Field(default_factory=list, description="List of safety warnings")
 
 
-class VirtualTrialResult(BaseModel):
+class VirtualTrialResult(BaseModel):  # type: ignore[misc]
     cohort_size: int = Field(..., description="Size of the synthetic cohort after filtering")
     safety_scan: List[str] = Field(default_factory=list, description="Detected safety risks")
     simulation_result: Optional[InterventionResult] = Field(
