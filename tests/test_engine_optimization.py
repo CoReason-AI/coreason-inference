@@ -7,7 +7,14 @@ import pandas as pd
 import pytest
 
 from coreason_inference.engine import InferenceEngine
-from coreason_inference.schema import InterventionResult, OptimizationOutput, ProtocolRule, RefutationStatus
+from coreason_inference.schema import (
+    CausalGraph,
+    InterventionResult,
+    OptimizationOutput,
+    ProtocolRule,
+    RefutationStatus,
+    VirtualTrialResult,
+)
 
 
 @pytest.fixture
@@ -175,3 +182,100 @@ def test_induce_rules_data_missing_integrity() -> None:
 
     with pytest.raises(ValueError, match="Data not available"):
         engine.induce_rules()
+
+
+def test_run_virtual_trial_success(mock_engine_with_data: InferenceEngine) -> None:
+    """Test successful virtual trial execution."""
+    mock_engine_with_data.latent_miner.model = MagicMock()
+    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
+
+    mock_optimization_result = OptimizationOutput(new_criteria=[], original_pos=0.3, optimized_pos=0.7, safety_flags=[])
+
+    mock_cohort = pd.DataFrame({"X1": [1, 2], "X2": [0.1, 0.2]})
+    mock_sim_result = InterventionResult(
+        patient_id="POPULATION_ATE",
+        intervention="do(T)",
+        counterfactual_outcome=0.6,
+        confidence_interval=(0.5, 0.7),
+        refutation_status=RefutationStatus.PASSED,
+    )
+
+    # Mock generate_synthetic_cohort (used via self.virtual_simulator instance on engine)
+    mock_engine_with_data.virtual_simulator = MagicMock()
+    mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = mock_cohort
+    mock_engine_with_data.virtual_simulator.scan_safety.return_value = ["Safety Warning"]
+    mock_engine_with_data.virtual_simulator.simulate_trial.return_value = mock_sim_result
+
+    result = mock_engine_with_data.run_virtual_trial(
+        optimization_result=mock_optimization_result,
+        treatment="T",
+        outcome="Y",
+        confounders=["X1"],
+        n_samples=50,
+        adverse_outcomes=["Death"],
+    )
+
+    assert isinstance(result, VirtualTrialResult)
+    assert result.cohort_size == 2
+    assert result.safety_scan == ["Safety Warning"]
+    assert result.simulation_result == mock_sim_result
+
+    # Verify calls
+    mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.assert_called_once_with(
+        miner=mock_engine_with_data.latent_miner,
+        n_samples=50,
+        rules=mock_optimization_result.new_criteria,
+    )
+    mock_engine_with_data.virtual_simulator.scan_safety.assert_called_once_with(
+        graph=mock_engine_with_data.graph,
+        treatment="T",
+        adverse_outcomes=["Death"],
+    )
+    mock_engine_with_data.virtual_simulator.simulate_trial.assert_called_once_with(
+        cohort=mock_cohort,
+        treatment="T",
+        outcome="Y",
+        confounders=["X1"],
+    )
+
+
+def test_run_virtual_trial_not_fitted() -> None:
+    """Test error when model is not fitted."""
+    engine = InferenceEngine()
+    # latent_miner.model is None by default
+
+    with pytest.raises(ValueError, match="Model not fitted"):
+        engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+
+
+def test_run_virtual_trial_empty_cohort(mock_engine_with_data: InferenceEngine) -> None:
+    """Test handling of empty cohort generation."""
+    mock_engine_with_data.latent_miner.model = MagicMock()
+    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
+
+    mock_engine_with_data.virtual_simulator = MagicMock()
+    mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = pd.DataFrame()
+
+    result = mock_engine_with_data.run_virtual_trial(
+        optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[]
+    )
+
+    assert result.cohort_size == 0
+    assert result.simulation_result is None
+
+
+def test_run_virtual_trial_simulation_failure(mock_engine_with_data: InferenceEngine) -> None:
+    """Test graceful handling of simulation failure."""
+    mock_engine_with_data.latent_miner.model = MagicMock()
+    mock_engine_with_data.graph = MagicMock(spec=CausalGraph)
+
+    mock_engine_with_data.virtual_simulator = MagicMock()
+    mock_engine_with_data.virtual_simulator.generate_synthetic_cohort.return_value = pd.DataFrame({"A": [1]})
+    mock_engine_with_data.virtual_simulator.simulate_trial.side_effect = Exception("Sim Error")
+
+    result = mock_engine_with_data.run_virtual_trial(
+        optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[]
+    )
+
+    assert result.cohort_size == 1
+    assert result.simulation_result is None

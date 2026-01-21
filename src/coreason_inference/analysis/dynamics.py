@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -44,7 +44,7 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
         Calculates the derivative dy/dt at time t.
         Neural ODEs often ignore 't' if the system is autonomous.
         """
-        return self.linear(y)
+        return cast(torch.Tensor, self.linear(y))
 
 
 class DynamicsEngine:
