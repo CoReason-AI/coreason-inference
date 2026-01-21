@@ -88,7 +88,9 @@ class CausalGraph(BaseModel):
 class InterventionResult(BaseModel):
     patient_id: str
     intervention: str  # "do(Drug_Dose = 50mg)"
-    counterfactual_outcome: float
+    counterfactual_outcome: Optional[float] = Field(
+        ..., description="The estimated causal effect. None if refutation fails."
+    )
     confidence_interval: Tuple[float, float]
     refutation_status: RefutationStatus
     cate_estimates: Optional[List[float]] = Field(
