@@ -39,39 +39,66 @@ class VirtualSimulator:
         miner: LatentMiner,
         n_samples: int = 1000,
         rules: List[ProtocolRule] | None = None,
+        max_retries: int = 10,
     ) -> pd.DataFrame:
         """
-        Generates a synthetic cohort using the LatentMiner VAE and filters it
-        according to the provided Protocol Rules.
+        Generates a synthetic cohort with Adaptive Sampling to ensure retention.
 
         Args:
             miner: Fitted LatentMiner instance.
             n_samples: Number of initial candidates to generate (pool size).
             rules: List of inclusion criteria to filter the cohort.
+            max_retries: Maximum number of attempts to generate enough samples.
 
         Returns:
             pd.DataFrame: The filtered synthetic cohort (Digital Twins).
         """
-        logger.info(f"Generating synthetic cohort. Pool size: {n_samples}")
+        target_size = n_samples
+        collected_cohorts = []
+        total_collected = 0
 
-        # 1. Generate broad population (Digital Twins)
-        try:
-            cohort = miner.generate(n_samples)
-        except Exception as e:
-            logger.error(f"Failed to generate synthetic data: {e}")
-            raise e
+        logger.info(f"Generating synthetic cohort. Target Size: {target_size}")
 
-        if cohort.empty:
-            logger.warning("LatentMiner generated empty cohort.")
-            return cohort
+        for attempt in range(max_retries):
+            # Heuristic: Generate 5x the target to account for strict filtering
+            batch_size = target_size * 5
 
-        # 2. Filter by Rules
-        if rules:
-            logger.info(f"Applying {len(rules)} protocol rules...")
-            cohort = self._apply_rules(cohort, rules)
+            try:
+                batch = miner.generate(batch_size)
+            except Exception as e:
+                logger.error(f"Failed to generate synthetic data: {e}")
+                raise e
 
-        logger.info(f"Final cohort size: {len(cohort)} (Retention: {len(cohort) / n_samples:.1%})")
-        return cohort
+            if batch.empty:
+                continue
+
+            # Filter by Rules
+            if rules:
+                batch = self._apply_rules(batch, rules)
+
+            if not batch.empty:
+                collected_cohorts.append(batch)
+                total_collected += len(batch)
+                logger.debug(f"Batch {attempt + 1}: Found {len(batch)} matching profiles.")
+
+            if total_collected >= target_size:
+                break
+
+        if not collected_cohorts:
+            logger.warning("LatentMiner failed to produce valid candidates after retries.")
+            # Try to preserve columns from the miner if possible
+            cols = getattr(miner, "feature_names", None)
+            return pd.DataFrame(columns=cols) if cols else pd.DataFrame()
+
+        # Combine all successful batches
+        final_cohort = pd.concat(collected_cohorts, ignore_index=True)
+
+        # Trim to exact requested size
+        if len(final_cohort) > target_size:
+            final_cohort = final_cohort.iloc[:target_size]
+
+        logger.info(f"Final cohort size: {len(final_cohort)} (Generated after {len(collected_cohorts)} batches)")
+        return final_cohort
 
     def scan_safety(self, graph: CausalGraph, treatment: str, adverse_outcomes: List[str]) -> List[str]:
         """
