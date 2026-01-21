@@ -94,9 +94,11 @@ class TestComplexVirtualSimulator:
         # BMI != 30: 30 corresponds to index 2 (Age 40). So remove index 2.
         # Result: indices 1 (Age 30, BMI 25), 3 (Age 50, BMI 35)
 
+        # Adaptive sampling ensures we get n_samples=5 by accumulating the valid rows [30, 50] repeatedly
         cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
-        assert len(cohort) == 2
-        assert cohort["Age"].tolist() == [30, 50]
+        assert len(cohort) == 5
+        # The content will be a mix of [30, 50] repeated.
+        assert all(val in [30, 50] for val in cohort["Age"].tolist())
 
     @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
     def test_simulate_trial_constant_features(self, mock_est_cls: MagicMock, simulator: VirtualSimulator) -> None:

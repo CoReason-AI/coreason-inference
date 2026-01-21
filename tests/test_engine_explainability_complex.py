@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.engine import InferenceEngine
 
 
@@ -88,7 +89,8 @@ class TestEngineExplainabilityComplex:
         # Very small dataset
         df = pd.DataFrame({"time": range(10), "X": np.random.randn(10), "Y": np.random.randn(10)})
 
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4) to handle random noise data without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
         engine.analyze(df, "time", ["X", "Y"])
 
         # Request 100 samples (dataset only has 10)
