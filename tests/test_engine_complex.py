@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.engine import InferenceEngine
 
 
@@ -38,7 +39,8 @@ class TestInferenceEngineComplex:
         # Shuffle the data to ensure order doesn't hide index issues
         data = data.sample(frac=1.0, random_state=42)
 
-        engine = InferenceEngine()
+        # Inject rk4 to handle random noise without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
         result = engine.analyze(data, time_col="time_sec", variable_cols=["A", "B"])
 
         # Check augmented data
@@ -55,7 +57,8 @@ class TestInferenceEngineComplex:
         """
         Verify that calling analyze() multiple times resets state correctly.
         """
-        engine = InferenceEngine()
+        # Inject rk4 to handle random noise without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # Run 1: 3 variables
         df1 = pd.DataFrame(

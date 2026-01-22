@@ -94,9 +94,52 @@ class TestComplexVirtualSimulator:
         # BMI != 30: 30 corresponds to index 2 (Age 40). So remove index 2.
         # Result: indices 1 (Age 30, BMI 25), 3 (Age 50, BMI 35)
 
+        # Adaptive sampling ensures we get n_samples=5 by accumulating the valid rows [30, 50] repeatedly
         cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
-        assert len(cohort) == 2
-        assert cohort["Age"].tolist() == [30, 50]
+        assert len(cohort) == 5
+        # The content will be a mix of [30, 50] repeated.
+        assert all(val in [30, 50] for val in cohort["Age"].tolist())
+
+    def test_adaptive_overshoot(self, simulator: VirtualSimulator) -> None:
+        """
+        Verify that if the miner produces more valid samples than requested in a single batch,
+        the result is trimmed exactly to n_samples.
+        """
+        mock_miner = MagicMock()
+        # Returns 100 rows, all valid (no rules)
+        mock_miner.generate.return_value = pd.DataFrame({"A": range(100)})
+
+        target = 10
+        cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=target)
+
+        # Miner called once with 5*10 = 50.
+        # Returns 100 (mock ignores input size).
+        # Should trim to 10.
+        assert len(cohort) == target
+        assert cohort["A"].tolist() == list(range(target))
+
+    def test_adaptive_exact_accumulation(self, simulator: VirtualSimulator) -> None:
+        """
+        Verify that the simulator correctly accumulates samples across multiple batches
+        and stops exactly when the target is met.
+        """
+        mock_miner = MagicMock()
+        # Returns 3 rows per call
+        mock_miner.generate.return_value = pd.DataFrame({"A": [1, 2, 3]})
+
+        target = 8
+        cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=target)
+
+        # Batch 1: +3 (Total 3)
+        # Batch 2: +3 (Total 6)
+        # Batch 3: +3 (Total 9) -> Stop. Trim to 8.
+
+        assert len(cohort) == target
+        # Content will be [1,2,3, 1,2,3, 1,2]
+        expected = [1, 2, 3, 1, 2, 3, 1, 2]
+        assert cohort["A"].tolist() == expected
+        # Verify it retried 3 times
+        assert mock_miner.generate.call_count == 3
 
     @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
     def test_simulate_trial_constant_features(self, mock_est_cls: MagicMock, simulator: VirtualSimulator) -> None:

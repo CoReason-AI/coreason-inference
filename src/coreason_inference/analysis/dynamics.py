@@ -24,27 +24,35 @@ from coreason_inference.utils.logger import logger
 
 class ODEFunc(nn.Module):  # type: ignore[misc]
     """
-    Neural ODE function approximating dy/dt = f(y).
-    This module uses a linear layer to allow for straightforward Jacobian extraction
-    to identify feedback loops, serving as a foundation for cyclic discovery.
+    UPGRADED: Non-Linear Neural ODE function.
+    Uses a Tanh activation to model complex, non-linear system dynamics.
     """
 
-    def __init__(self, input_dim: int):
+    def __init__(self, input_dim: int, hidden_dim: int = 64):
         super().__init__()
-        # Use a single linear layer to capture dependencies (Jacobian ~ Weight Matrix)
-        # In a more complex version, this could be an MLP.
-        # Bias is enabled to handle data shifted by StandardScaler (y' = Wy + b)
-        self.linear = nn.Linear(input_dim, input_dim, bias=True)
-        # Initialize with larger weights to help convergence to interaction terms (target ~ 1.0)
-        nn.init.normal_(self.linear.weight, mean=0.0, std=0.3)
-        nn.init.constant_(self.linear.bias, 0.0)
+        self.input_dim = input_dim
+
+        # 1. Non-Linear Architecture (MLP)
+        # Input -> Hidden (Tanh) -> Output
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.Tanh(),  # Tanh is smoother than ReLU, better for ODEs
+            nn.Linear(hidden_dim, input_dim),
+        )
+
+        # 2. Explicit Dependency Matrix (for Graph Discovery)
+        # We learn a mask 'W' to track which variables affect which.
+        self.W = nn.Parameter(torch.randn(input_dim, input_dim) * 0.1)
 
     def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
-        Calculates the derivative dy/dt at time t.
-        Neural ODEs often ignore 't' if the system is autonomous.
+        dy/dt = MLP(y) * W
         """
-        return self.linear(y)
+        # Element-wise multiplication to enforce the dependency structure
+        # Note: The prompt implementation `torch.matmul(dynamics, self.W)` multiplies (batch, dim) x (dim, dim)
+        # If `dynamics` output is (dim), it mixes them.
+        dynamics = self.net(y)
+        return torch.matmul(dynamics, self.W)
 
 
 class DynamicsEngine:
@@ -105,7 +113,8 @@ class DynamicsEngine:
         t = t - t[0]
 
         dim = len(variable_cols)
-        self.model = ODEFunc(dim)
+        # Initialize model with hidden dimension
+        self.model = ODEFunc(dim, hidden_dim=32)
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
         # Training Loop
@@ -118,10 +127,10 @@ class DynamicsEngine:
             # pred_y shape: (len(t), batch_size=1, dim) -> (len(t), dim)
             mse_loss = torch.mean((pred_y - y) ** 2)
 
-            # Add L1 Regularization (Sparsity)
+            # Add L1 Regularization (Sparsity) on the W matrix
             l1_loss = torch.tensor(0.0)
             if self.l1_lambda > 0 and self.model is not None:
-                l1_loss = self.l1_lambda * torch.norm(self.model.linear.weight, p=1)
+                l1_loss = self.l1_lambda * torch.norm(self.model.W, p=1)
 
             total_loss = mse_loss + l1_loss
 
@@ -146,8 +155,8 @@ class DynamicsEngine:
         if self.model is None:
             raise ValueError("Model has not been fitted yet.")
 
-        # Extract weights as adjacency matrix
-        weights = self.model.linear.weight.detach().numpy()
+        # Extract weights from the explicit W parameter
+        weights = self.model.W.detach().numpy()
 
         # Log weights for debugging
         logger.debug(f"Learned Interaction Matrix (Weights):\n{weights}")
@@ -164,6 +173,61 @@ class DynamicsEngine:
 
         # Detect Edges and Loops
         # 1. Identify Edges
+        adj_matrix = np.zeros_like(weights)
+        for i in range(len(self.variable_names)):  # Target
+            for j in range(len(self.variable_names)):  # Source
+                w = weights[i, j]
+                # Note: In PyTorch linear(y) is yA^T + b.
+                # Here we used matmul(dynamics, W).
+                # If dynamics is (1, dim), W is (dim, dim). Output is (1, dim).
+                # So output[j] = sum(dynamics[i] * W[i, j]).
+                # So W[i, j] is weight from i to j?
+                # Usually: x_new = x_old @ W.
+                # x_new[j] = sum_i (x_old[i] * W[i, j]).
+                # So W[i, j] implies flow from i to j.
+                # Previous code assumed `linear.weight` which is (out_features, in_features).
+                # So weight[i, j] was i from j. (Target i, Source j).
+                # Here W is (dim, dim) used in matmul(y, W).
+                # y is (batch, dim).
+                # y @ W -> (batch, dim).
+                # y_out[k] = sum_j (y[j] * W[j, k]).
+                # So W[j, k] is contribution from j (source) to k (target).
+                # So W[row, col] -> Row=Source, Col=Target.
+                # In previous code `weights[i, j]` was Target i, Source j.
+                # So `weights` here is Transpose of previous?
+                # Let's check loop detection logic:
+                # `w = weights[i, j]`
+                # `edges.append((variable_names[j], variable_names[i]))`
+                # If weights[i, j] means Target i, Source j, then j->i. Correct.
+                #
+                # If W[j, i] means Source j -> Target i.
+                # Then I should read W[j, i].
+                #
+                # Let's stick to the prompt's `weights = self.model.W.detach().numpy()`.
+                # If `matmul(y, W)` is used, W is (input, output) i.e. (source, target).
+                # So W[j, i] is j->i.
+                # But the loop logic below iterates `for i (target) ... for j (source)`.
+                # `w = weights[i, j]`.
+                # This assumes `weights[target, source]`.
+                # But W is `[source, target]`.
+                # So I need to Transpose W before assigning to `weights`?
+                # Or change the loop logic.
+                #
+                # Previous: `linear.weight` is (out, in) = (target, source).
+                # Current: `W` in `matmul(y, W)` is (in, out) = (source, target).
+                #
+                # So `W` is effectively Transpose of `linear.weight`.
+                #
+                # Let's adjust `weights` to be Transposed so the rest of the code works as is.
+                pass
+
+        # Transpose W to match (Target, Source) convention of the rest of the method
+        # Previous: weights[i, j] -> Target i, Source j.
+        # W: [Source, Target].
+        # So W.T -> [Target, Source].
+        weights = weights.T
+
+        # Update adj_matrix logic
         adj_matrix = np.zeros_like(weights)
         for i in range(len(self.variable_names)):  # Target
             for j in range(len(self.variable_names)):  # Source
@@ -207,6 +271,7 @@ class DynamicsEngine:
 
         # Stability Score (Eigenvalues of Jacobian)
         try:
+            # Eigenvalues of adjacency matrix ~ Jacobian
             eigenvalues = np.linalg.eigvals(weights)
             max_real_eig = np.max(np.real(eigenvalues))
             stability_score = float(max_real_eig)

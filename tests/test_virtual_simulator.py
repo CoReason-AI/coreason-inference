@@ -16,9 +16,13 @@ from coreason_inference.schema import CausalGraph, CausalNode, InterventionResul
 def mock_miner() -> MagicMock:
     miner = MagicMock(spec=LatentMiner)
     # Default behavior: generate a dataframe with columns A and B
+    # Note: In new implementation, batch size is 5x target.
+    # The miner should return new data each call ideally, or at least respect the call count.
+    # For simple mocks, return_value is static.
     miner.generate.return_value = pd.DataFrame(
         {"A": [10, 20, 30, 40, 50], "B": [1.0, 2.0, 3.0, 4.0, 5.0], "C": [100, 100, 100, 100, 100]}
     )
+    miner.feature_names = ["A", "B", "C"]
     return miner
 
 
@@ -29,9 +33,14 @@ def simulator() -> VirtualSimulator:
 
 def test_generate_synthetic_cohort_no_rules(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
     """Test generation without filtering."""
+    # Adaptive sampling asks for 5x target. Target=5, asks for 25.
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5)
 
-    mock_miner.generate.assert_called_once_with(5)
+    # Verify call with 5x batch
+    mock_miner.generate.assert_called_with(25)
+    # Mock returns 5 rows. Loop continues until max_retries or target met.
+    # If mock returns 5 rows every time:
+    # Batch 1: 5. Total 5. Target 5. Stop.
     assert len(cohort) == 5
     assert list(cohort.columns) == ["A", "B", "C"]
 
@@ -39,11 +48,16 @@ def test_generate_synthetic_cohort_no_rules(simulator: VirtualSimulator, mock_mi
 def test_generate_synthetic_cohort_miner_empty(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
     """Test when miner returns empty DataFrame."""
     mock_miner.generate.return_value = pd.DataFrame()
+    # Mock miner should also have feature_names to test column preservation
+    mock_miner.feature_names = ["A", "B", "C"]
 
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5)
 
     assert cohort.empty
-    mock_miner.generate.assert_called_once_with(5)
+    # New logic: loop retries 10 times.
+    assert mock_miner.generate.call_count == 10
+    # Check preserved columns
+    assert list(cohort.columns) == ["A", "B", "C"]
 
 
 def test_generate_synthetic_cohort_with_filtering(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
@@ -53,35 +67,49 @@ def test_generate_synthetic_cohort_with_filtering(simulator: VirtualSimulator, m
         ProtocolRule(feature="B", operator="<=", value=4.0, rationale="Test"),
     ]
 
+    # Mock behavior: 5 rows provided.
+    # Filter: A>20 -> 30, 40, 50. B<=4 -> 3.0, 4.0.
+    # 2 survivors per batch.
+    # Target 5.
+    # Batch 1: 2 survivors. Total 2.
+    # Batch 2: 2 survivors. Total 4.
+    # Batch 3: 2 survivors. Total 6. Stop.
+    # Final: 6 rows, trimmed to 5.
+
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
 
-    # Original A: [10, 20, 30, 40, 50] -> > 20 -> [30, 40, 50] (indices 2,3,4)
-    # Original B: [1.0, 2.0, 3.0, 4.0, 5.0] -> filtered to [3.0, 4.0, 5.0]
-    # Then B <= 4.0 -> [3.0, 4.0]
+    assert len(cohort) == 5
+    # Since all batches are identical [30, 40], the result is [30, 40, 30, 40, 30]
+    assert cohort["A"].tolist() == [30, 40, 30, 40, 30]
 
-    assert len(cohort) == 2
-    assert cohort["A"].tolist() == [30, 40]
-    assert cohort["B"].tolist() == [3.0, 4.0]
+    # Check if miner was called multiple times (expected 3)
+    assert mock_miner.generate.call_count == 3
 
 
 def test_generate_synthetic_cohort_empty_result(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
     """Test when rules filter out everyone."""
     rules = [ProtocolRule(feature="A", operator=">", value=100.0, rationale="Impossible")]
+    mock_miner.feature_names = ["A", "B", "C"]
 
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
 
     assert cohort.empty
+    # Should contain columns even if empty
     assert list(cohort.columns) == ["A", "B", "C"]
+    # Should have retried max times
+    assert mock_miner.generate.call_count == 10
 
 
 def test_generate_synthetic_cohort_missing_feature(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:
     """Test handling of rules for non-existent features."""
     rules = [ProtocolRule(feature="Z", operator=">", value=0.0, rationale="Missing")]
 
-    # Should skip the rule and return full cohort (or remaining cohort)
+    # Should skip the rule and return full cohort
+    # Mock returns 5. Target 5. Done in 1 batch.
     cohort = simulator.generate_synthetic_cohort(mock_miner, n_samples=5, rules=rules)
 
     assert len(cohort) == 5
+    assert mock_miner.generate.call_count == 1
 
 
 def test_generate_synthetic_cohort_miner_failure(simulator: VirtualSimulator, mock_miner: MagicMock) -> None:

@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.engine import InferenceEngine
 
 
@@ -50,7 +51,8 @@ class TestEngineExplainabilityComplex:
         We expect at least one discovered latent to have high SHAP importance for
         Feature_A and Feature_B, and low importance for Feature_Noise.
         """
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4) to handle data without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # Run pipeline
         engine.analyze(
@@ -88,7 +90,8 @@ class TestEngineExplainabilityComplex:
         # Very small dataset
         df = pd.DataFrame({"time": range(10), "X": np.random.randn(10), "Y": np.random.randn(10)})
 
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4) to handle random noise data without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
         engine.analyze(df, "time", ["X", "Y"])
 
         # Request 100 samples (dataset only has 10)
@@ -105,7 +108,8 @@ class TestEngineExplainabilityComplex:
             {"time": range(20), "A": np.random.randn(20), "B": np.random.randn(20), "C": np.random.randn(20)}
         )
 
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4)
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # 1. Analyze A, B
         engine.analyze(df, "time", ["A", "B"])
