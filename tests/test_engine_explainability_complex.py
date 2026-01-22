@@ -51,7 +51,8 @@ class TestEngineExplainabilityComplex:
         We expect at least one discovered latent to have high SHAP importance for
         Feature_A and Feature_B, and low importance for Feature_Noise.
         """
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4) to handle data without underflow
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # Run pipeline
         engine.analyze(
