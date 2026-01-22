@@ -69,7 +69,53 @@ class CausalEstimator:
         """
         logger.info(f"Starting causal estimation: Treatment='{treatment}', Outcome='{outcome}', Method='{method}'")
 
-        # 1. Define Causal Model
+        # 1. Define & Fit Model
+        model, identified_estimand, estimate = self._fit_and_estimate(
+            treatment, outcome, confounders, method, treatment_is_binary
+        )
+
+        # 2. Extract Results (ATE & CATE)
+        effect_modifiers = confounders if method == METHOD_FOREST else []
+        cate_estimates = self._extract_cate_estimates(estimate, effect_modifiers) if method == METHOD_FOREST else None
+
+        effect_value, result_patient_id = self._determine_effect_value(
+            estimate, cate_estimates, patient_id_col, target_patient_id
+        )
+
+        # Early exit if estimation failed (value is None)
+        if effect_value is None:
+            return self._build_failure_result(treatment)
+
+        logger.info(f"Estimated Effect ({result_patient_id}): {effect_value}")
+
+        # 3. Refute Estimate
+        status = self._refute_estimate(model, identified_estimand, estimate, num_simulations)
+
+        # 4. Finalize Result
+        # Invalidate if refutation failed
+        final_effect = effect_value if status == RefutationStatus.PASSED else None
+        final_cate = cate_estimates if status == RefutationStatus.PASSED else None
+
+        if status == RefutationStatus.FAILED:
+            logger.warning(f"Estimate invalidated due to failed refutation for {treatment}->{outcome}")
+
+        ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
+
+        return InterventionResult(
+            patient_id=result_patient_id,
+            intervention=f"do({treatment})",
+            counterfactual_outcome=final_effect,
+            confidence_interval=(ci_low, ci_high),
+            refutation_status=status,
+            cate_estimates=final_cate,
+        )
+
+    def _fit_and_estimate(
+        self, treatment: str, outcome: str, confounders: List[str], method: str, treatment_is_binary: bool
+    ) -> Tuple[CausalModel, Any, Any]:
+        """
+        Configures the CausalModel, identifies the effect, and runs the estimation.
+        """
         effect_modifiers = confounders if method == METHOD_FOREST else []
 
         model = CausalModel(
@@ -78,13 +124,11 @@ class CausalEstimator:
             outcome=outcome,
             common_causes=confounders,
             effect_modifiers=effect_modifiers,
-            logging_level="ERROR",  # Reduce noise from dowhy
+            logging_level="ERROR",
         )
 
-        # 2. Identify Effect
         identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
 
-        # 3. Estimate Effect
         method_name, method_params = self._get_method_params(method, treatment_is_binary)
 
         try:
@@ -97,17 +141,24 @@ class CausalEstimator:
             logger.error(f"Estimation failed: {e}")
             raise e
 
-        # Extract CATE if method is forest
-        cate_estimates = self._extract_cate_estimates(estimate, effect_modifiers) if method == METHOD_FOREST else None
+        return model, identified_estimand, estimate
 
-        # Determine Primary Outcome Value (ATE or Personalized CATE)
+    def _determine_effect_value(
+        self,
+        estimate: Any,
+        cate_estimates: Optional[List[float]],
+        patient_id_col: str,
+        target_patient_id: Optional[str],
+    ) -> Tuple[Optional[float], str]:
+        """
+        Determines whether to return the Population ATE or a Personalized CATE.
+        Returns (effect_value, result_label).
+        """
         if target_patient_id and cate_estimates:
             # Personalized Inference
             if patient_id_col not in self.data.columns:
                 raise ValueError(f"Patient ID column '{patient_id_col}' not found in data.")
 
-            # Find patient index (integer location)
-            # cate_estimates corresponds to the rows of self.data in order.
             mask = (self.data[patient_id_col] == target_patient_id).values
             locs = np.where(mask)[0]
 
@@ -116,61 +167,51 @@ class CausalEstimator:
 
             patient_idx = locs[0]
             effect_value = float(cate_estimates[patient_idx])
-            result_patient_id = target_patient_id
-            logger.info(f"Personalized Effect for {target_patient_id}: {effect_value}")
+            return effect_value, target_patient_id
 
-        else:
-            # Population ATE
-            # FIX: Handle cases where estimate.value is None (failed estimation)
-            if estimate.value is None:
-                logger.error(f"Estimation failed for {treatment} -> {outcome}. DoWhy returned None.")
-                return InterventionResult(
-                    patient_id="ERROR",
-                    intervention=f"do({treatment})",
-                    counterfactual_outcome=None,
-                    confidence_interval=(0.0, 0.0),
-                    refutation_status=RefutationStatus.FAILED,
-                    cate_estimates=None,
-                )
+        # Population ATE
+        if estimate.value is None:
+            logger.error("DoWhy returned None for estimate.value.")
+            return None, "ERROR"
 
-            effect_value = float(estimate.value)
-            result_patient_id = "POPULATION_ATE"
-            logger.info(f"Estimated Effect (ATE): {effect_value}")
+        return float(estimate.value), "POPULATION_ATE"
 
-        # 4. Refute Estimate (Placebo Test)
-        refutation = model.refute_estimate(
-            identified_estimand,
-            estimate,
-            method_name="placebo_treatment_refuter",
-            placebo_type="permute",
-            num_simulations=num_simulations,
-        )
+    def _refute_estimate(
+        self, model: CausalModel, identified_estimand: Any, estimate: Any, num_simulations: int
+    ) -> RefutationStatus:
+        """
+        Runs the Placebo Treatment Refuter.
+        """
+        try:
+            refutation = model.refute_estimate(
+                identified_estimand,
+                estimate,
+                method_name="placebo_treatment_refuter",
+                placebo_type="permute",
+                num_simulations=num_simulations,
+            )
 
-        refutation_passed = refutation.refutation_result["is_statistically_significant"]
-        status = RefutationStatus.FAILED if refutation_passed else RefutationStatus.PASSED
-        logger.info(f"Refutation Status: {status} (p-value: {refutation.refutation_result['p_value']})")
+            if refutation.refutation_result["is_statistically_significant"]:
+                return RefutationStatus.FAILED
+            return RefutationStatus.PASSED
 
-        # Invalidate result if refutation fails
-        final_effect: Optional[float] = effect_value
-        final_cate = cate_estimates
-        if status == RefutationStatus.FAILED:
-            logger.warning(f"Estimate invalidated due to failed refutation for {treatment}->{outcome}")
-            final_effect = None
-            final_cate = None
+        except Exception as e:
+            logger.warning(f"Refutation process failed: {e}")
+            # If refutation crashes, do we fail the result?
+            # Usually strict safety says YES, fail it if we can't verify it.
+            # But prompt request was to handle crash.
+            # I will return FAILED to be safe.
+            return RefutationStatus.FAILED
 
-        # Confidence Interval
-        ci_low, ci_high = self._extract_confidence_intervals(estimate, effect_value)
-
-        result = InterventionResult(
-            patient_id=result_patient_id,
+    def _build_failure_result(self, treatment: str) -> InterventionResult:
+        return InterventionResult(
+            patient_id="ERROR",
             intervention=f"do({treatment})",
-            counterfactual_outcome=final_effect,
-            confidence_interval=(ci_low, ci_high),
-            refutation_status=status,
-            cate_estimates=final_cate,
+            counterfactual_outcome=None,
+            confidence_interval=(0.0, 0.0),
+            refutation_status=RefutationStatus.FAILED,
+            cate_estimates=None,
         )
-
-        return result
 
     def _get_method_params(self, method: str, treatment_is_binary: bool) -> Tuple[str, Dict[str, Any]]:
         """
@@ -210,11 +251,11 @@ class CausalEstimator:
         """
         Safely extracts confidence intervals from the estimate.
         """
-        ci = estimate.get_confidence_intervals()
-        if ci is None:
-            return default_value, default_value
-
         try:
+            ci = estimate.get_confidence_intervals()
+            if ci is None:
+                return default_value, default_value
+
             if isinstance(ci, (tuple, list)):
                 ci_low, ci_high = ci[0], ci[1]
 

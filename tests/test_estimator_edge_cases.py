@@ -87,11 +87,10 @@ def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame) -> None:
         assert result.refutation_status == RefutationStatus.PASSED
 
 
-def test_refutation_exception_propagation(sample_data: pd.DataFrame) -> None:
+def test_refutation_exception_handling(sample_data: pd.DataFrame) -> None:
     """
     Test edge case: Refutation raises an unhandled exception.
-    It should propagate up to the caller (or be handled if we decide to wrap it).
-    Currently, we expect it to raise.
+    The updated code handles this by logging warning and setting status to FAILED.
     """
     estimator = CausalEstimator(sample_data)
 
@@ -106,42 +105,66 @@ def test_refutation_exception_propagation(sample_data: pd.DataFrame) -> None:
         # Mock Refutation raising Exception
         mock_model.refute_estimate.side_effect = ValueError("Refuter crashed")
 
-        with pytest.raises(ValueError, match="Refuter crashed"):
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+
+        # Should NOT crash, but return FAILED
+        assert result.refutation_status == RefutationStatus.FAILED
+        assert result.counterfactual_outcome is None
+
+
+def test_estimation_exception_propagation(sample_data: pd.DataFrame) -> None:
+    """
+    Test that if estimation (model fitting) fails, it raises the exception.
+    """
+    estimator = CausalEstimator(sample_data)
+
+    with patch("coreason_inference.analysis.estimator.CausalModel") as mock_model_cls:
+        mock_model = mock_model_cls.return_value
+        mock_model.identify_effect.return_value = MagicMock()
+
+        # Mock estimate_effect raising Exception
+        mock_model.estimate_effect.side_effect = RuntimeError("Optimization failed")
+
+        with pytest.raises(RuntimeError, match="Optimization failed"):
             estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+
+
+def test_confidence_interval_fallback(sample_data: pd.DataFrame) -> None:
+    """
+    Test that if confidence interval extraction fails, defaults are returned.
+    """
+    estimator = CausalEstimator(sample_data)
+
+    with patch("coreason_inference.analysis.estimator.CausalModel") as mock_model_cls:
+        mock_model = mock_model_cls.return_value
+
+        mock_estimate = MagicMock()
+        mock_estimate.value = 5.0
+        # Mock CI raising exception
+        mock_estimate.get_confidence_intervals.side_effect = Exception("CI failed")
+        mock_model.estimate_effect.return_value = mock_estimate
+
+        mock_refutation = MagicMock()
+        mock_refutation.refutation_result = {"is_statistically_significant": False, "p_value": 0.5}
+        mock_model.refute_estimate.return_value = mock_refutation
+
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+
+        # Default value matches effect value (or 0.0? Implementation uses default_value=effect_value)
+        # Check implementation: _extract_confidence_intervals(estimate, effect_value) -> returns default_value
+        assert result.confidence_interval == (5.0, 5.0)
 
 
 def test_empty_confounders_forest_error(sample_data: pd.DataFrame) -> None:
     """
     Test that calling forest method with empty confounders/effect modifiers
     might cause issues in EconML, handled via exception or propagated.
-    Actually, CausalForestDML requires at least one feature for splitting.
     """
     estimator = CausalEstimator(sample_data)
-
-    # EconML CausalForestDML usually requires X != None.
-    # But DoWhy handles the mapping.
-    # If we pass empty list, DoWhy might pass None or empty DF.
-
-    # We expect a crash or specific error from backend if we don't mock it.
-    # But since we don't want to rely on external lib behavior in unit test,
-    # we can check if our code allows it.
-
-    # Our code: `effect_modifiers = confounders if method == METHOD_FOREST else []`
-    # If confounders is [], effect_modifiers is [].
-    # CausalModel init with effect_modifiers=[].
-
-    # Let's verify that validation passes until the library call.
-    # We won't mock here to see integration behavior if possible,
-    # OR mock to verify inputs.
 
     with patch("coreason_inference.analysis.estimator.CausalModel") as mock_model_cls:
         mock_model = mock_model_cls.return_value
         mock_model.estimate_effect.side_effect = ValueError("EconML Error: X is empty")
 
         with pytest.raises(ValueError, match="EconML Error"):
-            estimator.estimate_effect(
-                treatment="T",
-                outcome="Y",
-                confounders=[],  # Empty
-                method=METHOD_FOREST,
-            )
+            estimator.estimate_effect(treatment="T", outcome="Y", confounders=[], method=METHOD_FOREST)
