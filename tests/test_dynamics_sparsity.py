@@ -49,7 +49,7 @@ def test_sparsity_enforcement() -> None:
     engine_no_reg = DynamicsEngine(epochs=1000, learning_rate=0.01, l1_lambda=0.0)
     engine_no_reg.fit(data, time_col="time", variable_cols=cols)
     assert engine_no_reg.model is not None
-    weights_no_reg = engine_no_reg.model.linear.weight.detach().numpy()
+    weights_no_reg = engine_no_reg.model.W.detach().numpy()
 
     c_mag_no_reg = (
         np.abs(weights_no_reg[0, 2])
@@ -62,7 +62,7 @@ def test_sparsity_enforcement() -> None:
     engine_l1 = DynamicsEngine(epochs=1000, learning_rate=0.01, l1_lambda=0.5)
     engine_l1.fit(data, time_col="time", variable_cols=cols)
     assert engine_l1.model is not None
-    weights_l1 = engine_l1.model.linear.weight.detach().numpy()
+    weights_l1 = engine_l1.model.W.detach().numpy()
 
     c_mag_l1 = np.abs(weights_l1[0, 2]) + np.abs(weights_l1[1, 2]) + np.abs(weights_l1[2, 0]) + np.abs(weights_l1[2, 1])
 
