@@ -121,6 +121,18 @@ class CausalEstimator:
 
         else:
             # Population ATE
+            # FIX: Handle cases where estimate.value is None (failed estimation)
+            if estimate.value is None:
+                logger.error(f"Estimation failed for {treatment} -> {outcome}. DoWhy returned None.")
+                return InterventionResult(
+                    patient_id="ERROR",
+                    intervention=f"do({treatment})",
+                    counterfactual_outcome=None,
+                    confidence_interval=(0.0, 0.0),
+                    refutation_status=RefutationStatus.FAILED,
+                    cate_estimates=None,
+                )
+
             effect_value = float(estimate.value)
             result_patient_id = "POPULATION_ATE"
             logger.info(f"Estimated Effect (ATE): {effect_value}")
