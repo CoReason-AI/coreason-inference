@@ -108,7 +108,8 @@ class TestEngineExplainabilityComplex:
             {"time": range(20), "A": np.random.randn(20), "B": np.random.randn(20), "C": np.random.randn(20)}
         )
 
-        engine = InferenceEngine()
+        # Inject robust dynamics engine (rk4)
+        engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # 1. Analyze A, B
         engine.analyze(df, "time", ["A", "B"])
