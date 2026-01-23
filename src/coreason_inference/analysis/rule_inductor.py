@@ -12,9 +12,10 @@ from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.tree import DecisionTreeRegressor, _tree
+
 from coreason_inference.schema import OptimizationOutput, ProtocolRule
 from coreason_inference.utils.logger import logger
-from sklearn.tree import DecisionTreeRegressor, _tree
 
 
 class RuleInductor:

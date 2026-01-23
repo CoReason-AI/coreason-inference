@@ -4,6 +4,8 @@
 import math
 
 import pytest
+from pydantic import ValidationError
+
 from coreason_inference.schema import (
     CausalGraph,
     CausalNode,
@@ -12,7 +14,6 @@ from coreason_inference.schema import (
     LoopType,
     RefutationStatus,
 )
-from pydantic import ValidationError
 
 
 def test_disconnected_graph() -> None:

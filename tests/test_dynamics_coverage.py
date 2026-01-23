@@ -11,6 +11,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from coreason_inference.analysis.dynamics import DynamicsEngine
 
 

@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List
 
 import networkx as nx
 import pandas as pd
+
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.schema import CausalGraph, InterventionResult, ProtocolRule

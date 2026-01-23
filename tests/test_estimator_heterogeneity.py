@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.schema import RefutationStatus
 

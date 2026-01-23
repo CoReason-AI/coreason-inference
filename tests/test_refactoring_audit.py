@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pandas as pd
+
 from coreason_inference.analysis.dynamics import ODEFunc
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
 from coreason_inference.schema import CausalGraph, ProtocolRule

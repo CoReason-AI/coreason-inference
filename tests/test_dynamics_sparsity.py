@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+
 from coreason_inference.analysis.dynamics import DynamicsEngine
 
 
@@ -72,6 +73,6 @@ def test_sparsity_enforcement() -> None:
     print(f"C Mag (L1): {c_mag_l1}")
 
     # Assert L1 reduces spurious connections by at least 30%
-    assert (
-        c_mag_l1 < c_mag_no_reg * 0.7
-    ), f"L1 Regularization did not sufficiently reduce spurious weights. NoReg: {c_mag_no_reg}, L1: {c_mag_l1}"
+    assert c_mag_l1 < c_mag_no_reg * 0.7, (
+        f"L1 Regularization did not sufficiently reduce spurious weights. NoReg: {c_mag_no_reg}, L1: {c_mag_l1}"
+    )
