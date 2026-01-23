@@ -14,7 +14,6 @@ import pytest
 import torch
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
-from coreason_inference.schema import LoopType
 
 
 @pytest.fixture
@@ -50,6 +49,7 @@ def test_acyclicity_constraint_suppresses_loops(cyclic_data: pd.DataFrame) -> No
 
     # Check the acyclicity constraint value directly
     # h(W) should be close to 0
+    assert engine.model is not None
     with torch.no_grad():
         h_val = engine._compute_acyclicity_constraint(engine.model.W).item()
 
@@ -66,7 +66,7 @@ def test_acyclicity_constraint_suppresses_loops(cyclic_data: pd.DataFrame) -> No
     # NOTEARS should kill one direction.
 
     # We check if there are any length-2 loops
-    loops = [l for l in graph.loop_dynamics if len(l.path) == 3] # A-B-A
+    loops = [loop for loop in graph.loop_dynamics if len(loop.path) == 3]  # A-B-A
     assert len(loops) == 0, f"Found loops despite high acyclicity penalty: {loops}"
 
 
@@ -81,6 +81,7 @@ def test_acyclicity_constraint_allows_loops_when_zero(cyclic_data: pd.DataFrame)
     engine.fit(cyclic_data, "time", ["A", "B"])
 
     # Check h(W) might be > 0
+    assert engine.model is not None
     with torch.no_grad():
         h_val = engine._compute_acyclicity_constraint(engine.model.W).item()
 
@@ -89,7 +90,7 @@ def test_acyclicity_constraint_allows_loops_when_zero(cyclic_data: pd.DataFrame)
     # Note: h(W) logic uses W*W. If W[i,j] and W[j,i] are non-zero, exp(W*W) trace grows.
 
     graph = engine.discover_loops(threshold=0.05)
-    loops = [l for l in graph.loop_dynamics if len(l.path) == 3]
+    loops = [loop for loop in graph.loop_dynamics if len(loop.path) == 3]
 
     # Should find the loop
     assert len(loops) > 0, "Failed to find loop with zero penalty"

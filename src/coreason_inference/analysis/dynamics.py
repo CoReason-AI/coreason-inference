@@ -197,7 +197,8 @@ class DynamicsEngine:
             if epoch % 50 == 0:
                 logger.debug(
                     f"Epoch {epoch}, Loss: {total_loss.item()} "
-                    f"(MSE: {mse_loss.item()}, L1: {l1_loss.item()}, Jac: {jacobian_loss.item()}, DAG: {acyclicity_loss.item()})"
+                    f"(MSE: {mse_loss.item()}, L1: {l1_loss.item()}, "
+                    f"Jac: {jacobian_loss.item()}, DAG: {acyclicity_loss.item()})"
                 )
 
         logger.info(f"Training complete. Final Loss: {total_loss.item()}")
