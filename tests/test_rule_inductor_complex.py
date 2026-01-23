@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from coreason_inference.analysis.rule_inductor import RuleInductor
 
-def test_outlier_dominance():
+def test_outlier_dominance() -> None:
     """
     Verifies that the Mean CATE optimization adheres strictly to the mean,
     even if it's driven by a single outlier (High Variance).
@@ -13,7 +13,6 @@ def test_outlier_dominance():
 
     Expected: Select Group B.
     """
-    n = 20
     # Group A: 10 people, all 1.0
     grp_a = np.ones(10) * 1.0
     # Group B: 10 people. 9 are 0.0, 1 is 20.0. Mean = 20/10 = 2.0.
@@ -37,7 +36,7 @@ def test_outlier_dominance():
     assert rule.operator == ">"
     assert result.optimized_pos == pytest.approx(2.0)
 
-def test_interaction_recovery():
+def test_interaction_recovery() -> None:
     """
     Verifies that the inductor correctly extracts rules for a subgroup
     defined by an interaction (AND logic).
@@ -86,7 +85,7 @@ def test_interaction_recovery():
             assert r.operator == ">"
             # Split around 0
 
-def test_least_harmful_selection():
+def test_least_harmful_selection() -> None:
     """
     Verifies behavior when ALL subgroups have negative effects.
     Should select the 'least bad' (highest arithmetic mean).
@@ -94,7 +93,6 @@ def test_least_harmful_selection():
     Group A: Mean -5.0 (Toxic)
     Group B: Mean -1.0 (Less Toxic)
     """
-    n = 100
     # Group A (0): -5.0
     # Group B (1): -1.0
 
@@ -112,7 +110,7 @@ def test_least_harmful_selection():
     assert rule.feature == "Type"
     assert rule.operator == ">"
 
-def test_robustness_noise():
+def test_robustness_noise() -> None:
     """
     Verifies that the system produces a valid output structure even with pure noise.
     """

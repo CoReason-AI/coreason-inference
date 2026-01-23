@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from coreason_inference.analysis.rule_inductor import RuleInductor
 
-def test_rule_inductor_optimizes_mean_cate_over_pos():
+def test_rule_inductor_optimizes_mean_cate_over_pos() -> None:
     """
     Verifies that the RuleInductor prioritizes Mean CATE over Probability of Success (Responder Rate).
 
@@ -63,7 +63,7 @@ def test_rule_inductor_optimizes_mean_cate_over_pos():
     assert rule.operator == ">"
     assert rule.value == 0.5
 
-def test_rule_inductor_handles_negative_effects():
+def test_rule_inductor_handles_negative_effects() -> None:
     """
     Verifies robust handling when all effects are negative.
     Optimization should pick the 'least bad' or max mean effect.
