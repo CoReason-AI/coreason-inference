@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,12 +16,11 @@ import shap
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
 
-from coreason_inference.utils.logger import logger
 
-
-class CausalVAE(nn.Module):  # type: ignore[misc]
+class CausalVAE(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int = 32, latent_dim: int = 5):
         super().__init__()
         # Encoder
@@ -60,7 +59,7 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         Helper method for SHAP explanation. Returns only the mean of the latent distribution.
         """
         h_enc = self.activation(self.encoder_hidden(x))
-        return self.mu_layer(h_enc)
+        return self.mu_layer(h_enc)  # type: ignore[no-any-return]
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -68,10 +67,10 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         """
         h_dec = self.activation(self.decoder_hidden(z))
         x_hat = self.decoder_output(h_dec)
-        return x_hat
+        return x_hat  # type: ignore[no-any-return]
 
 
-class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
+class _ShapEncoderWrapper(nn.Module):
     """
     Helper wrapper for SHAP explanation to isolate the encoder mean.
     """
@@ -158,7 +157,7 @@ class LatentMiner:
             # Total Loss
             loss = recon_loss + self.beta * kld_loss
 
-            loss.backward()
+            loss.backward()  # type: ignore[no-untyped-call]
 
             optimizer.step()
 
@@ -261,11 +260,11 @@ class LatentMiner:
 
             # Fallback to KernelExplainer
             # Expects function: numpy -> numpy
-            def predict_fn(x_np: np.ndarray) -> np.ndarray:
+            def predict_fn(x_np: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
                 x_torch = torch.tensor(x_np, dtype=torch.float32, device=self.device)
                 with torch.no_grad():
                     out = wrapped_model(x_torch)
-                return out.cpu().numpy()
+                return out.cpu().numpy()  # type: ignore[no-any-return]
 
             # Using a smaller background for KernelExplainer as it is slow
             background_small = background_tensor.cpu().numpy()[:10]  # Very small background

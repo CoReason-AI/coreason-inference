@@ -13,7 +13,6 @@ import pandas as pd
 import pytest
 import torch
 import torch.nn as nn
-
 from coreason_inference.analysis.latent import LatentMiner
 
 
