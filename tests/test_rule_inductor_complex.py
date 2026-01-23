@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from coreason_inference.analysis.rule_inductor import RuleInductor
+
 
 def test_outlier_dominance() -> None:
     """
@@ -20,9 +22,7 @@ def test_outlier_dominance() -> None:
     grp_b[-1] = 20.0
 
     cate = np.concatenate([grp_a, grp_b])
-    features = pd.DataFrame({
-        "Group": np.concatenate([np.zeros(10), np.ones(10)])
-    })
+    features = pd.DataFrame({"Group": np.concatenate([np.zeros(10), np.ones(10)])})
 
     inductor = RuleInductor(max_depth=1, min_samples_leaf=5)
     inductor.fit(features, cate)
@@ -35,6 +35,7 @@ def test_outlier_dominance() -> None:
     assert rule.feature == "Group"
     assert rule.operator == ">"
     assert result.optimized_pos == pytest.approx(2.0)
+
 
 def test_interaction_recovery() -> None:
     """
@@ -80,10 +81,11 @@ def test_interaction_recovery() -> None:
     for r in result.new_criteria:
         if r.feature == "Age":
             assert r.operator == ">"
-            assert r.value >= 40 # Split might not be exactly 50 depending on data distribution
+            assert r.value >= 40  # Split might not be exactly 50 depending on data distribution
         if r.feature == "Biomarker":
             assert r.operator == ">"
             # Split around 0
+
 
 def test_least_harmful_selection() -> None:
     """
@@ -109,6 +111,7 @@ def test_least_harmful_selection() -> None:
     rule = result.new_criteria[0]
     assert rule.feature == "Type"
     assert rule.operator == ">"
+
 
 def test_robustness_noise() -> None:
     """
