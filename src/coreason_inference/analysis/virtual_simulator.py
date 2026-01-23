@@ -1,4 +1,4 @@
-# Copyright (C) 2026 CoReason
+# Copyright (c) 2026 CoReason
 # Licensed under the Prosperity Public License 3.0.0
 
 import operator

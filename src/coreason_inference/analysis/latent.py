@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -60,7 +60,7 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         Helper method for SHAP explanation. Returns only the mean of the latent distribution.
         """
         h_enc = self.activation(self.encoder_hidden(x))
-        return self.mu_layer(h_enc)
+        return cast(torch.Tensor, self.mu_layer(h_enc))
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -68,7 +68,7 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         """
         h_dec = self.activation(self.decoder_hidden(z))
         x_hat = self.decoder_output(h_dec)
-        return x_hat
+        return cast(torch.Tensor, x_hat)
 
 
 class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
@@ -261,11 +261,11 @@ class LatentMiner:
 
             # Fallback to KernelExplainer
             # Expects function: numpy -> numpy
-            def predict_fn(x_np: np.ndarray) -> np.ndarray:
+            def predict_fn(x_np: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
                 x_torch = torch.tensor(x_np, dtype=torch.float32, device=self.device)
                 with torch.no_grad():
                     out = wrapped_model(x_torch)
-                return out.cpu().numpy()
+                return cast(np.ndarray[Any, Any], out.cpu().numpy())
 
             # Using a smaller background for KernelExplainer as it is slow
             background_small = background_tensor.cpu().numpy()[:10]  # Very small background

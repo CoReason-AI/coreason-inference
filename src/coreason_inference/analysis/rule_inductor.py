@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ class RuleInductor:
         self.tree_model: Optional[DecisionTreeRegressor] = None
         self.feature_names: List[str] = []
 
-    def fit(self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray) -> None:
+    def fit(self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray[Any, Any]) -> None:
         """
         Fits a Decision Tree Regressor to predict CATE scores from features.
 
@@ -117,7 +117,7 @@ class RuleInductor:
         rules.reverse()
         return rules
 
-    def induce_rules(self, cate_scores: pd.Series | np.ndarray) -> OptimizationOutput:
+    def induce_rules(self, cate_scores: pd.Series | np.ndarray[Any, Any]) -> OptimizationOutput:
         """
         Extracts optimized inclusion criteria from the fitted tree using internal tree statistics (Mean CATE).
         """
@@ -166,7 +166,9 @@ class RuleInductor:
             safety_flags=["Optimization inaccurate without feature data. Use induce_rules_with_data."],
         )
 
-    def induce_rules_with_data(self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray) -> OptimizationOutput:
+    def induce_rules_with_data(
+        self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray[Any, Any]
+    ) -> OptimizationOutput:
         """
         Extracts optimized inclusion criteria calculating stats based on the provided data.
         """
