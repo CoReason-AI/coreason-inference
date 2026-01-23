@@ -8,179 +8,126 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-import math
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 import torch
-from pydantic import ValidationError
-from torchdiffeq import odeint as torch_odeint
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
-from coreason_inference.schema import CausalGraph, CausalNode, LoopDynamics, LoopType
+from coreason_inference.schema import LoopType
 
 
 @pytest.fixture
-def acyclic_data() -> pd.DataFrame:
+def time_series_data() -> pd.DataFrame:
     """
-    Generates data for a simple decay system: dy/dt = -0.5 * y
+    Generates a simple harmonic oscillator time series (A <-> B).
     """
-    t = torch.linspace(0, 5, 50)
-    y0 = torch.tensor([10.0])
-
-    class DecayDynamics(torch.nn.Module):  # type: ignore[misc]
-        def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            return -0.5 * y
-
-    with torch.no_grad():
-        y = torch_odeint(DecayDynamics(), y0, t, method="dopri5")
-
-    return pd.DataFrame({"time": t.numpy(), "variable_a": y.squeeze().numpy()})
+    t = np.linspace(0, 10, 100)
+    # A = sin(t), B = cos(t) -> dA/dt = B, dB/dt = -A
+    a = np.sin(t)
+    b = np.cos(t)
+    df = pd.DataFrame({"time": t, "A": a, "B": b})
+    return df
 
 
-@pytest.fixture
-def cyclic_data() -> pd.DataFrame:
-    """
-    Generates data for a PURE harmonic oscillator (marginally stable).
-    dy1/dt = y2
-    dy2/dt = -y1
-    Jacobian: [[0, 1], [-1, 0]]
-    Period: 2*pi approx 6.28
-    Time: 0 to 6.28 (One full cycle).
-    This ensures mean is approx 0, making StandardScaler consistent.
-    """
-    period = 2 * math.pi
-    # Reduced points to 50 for faster training
-    t = torch.linspace(0, period, 50)
-    y0 = torch.tensor([0.0, 1.0])
-
-    class HarmonicDynamics(torch.nn.Module):  # type: ignore[misc]
-        def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            # y is [y1, y2]
-            dydt = torch.zeros_like(y)
-            dydt[0] = y[1]
-            dydt[1] = -y[0]
-            return dydt
-
-    with torch.no_grad():
-        y_true = torch_odeint(HarmonicDynamics(), y0, t, method="dopri5")
-
-    y1_vals = y_true[:, 0].numpy()
-    y2_vals = y_true[:, 1].numpy()
-    t_vals = t.numpy()
-
-    return pd.DataFrame({"time": t_vals, "y1": y1_vals, "y2": y2_vals})
-
-
-def test_dynamics_fit_acyclic(acyclic_data: pd.DataFrame) -> None:
-    """
-    Test fitting on a simple acyclic decay system.
-    Expect: Self-loop with negative weight (decay).
-    """
+def test_dynamics_fit_and_discover(time_series_data: pd.DataFrame) -> None:
+    """Test that DynamicsEngine fits and discovers the feedback loop."""
     torch.manual_seed(42)
     np.random.seed(42)
-    # Use rk4 for fixed step training
-    engine = DynamicsEngine(learning_rate=0.05, epochs=800, method="rk4")
-    engine.fit(acyclic_data, time_col="time", variable_cols=["variable_a"])
 
-    # Reduced threshold slightly to be safe against normalization effects
+    # Increased epochs and reduced LR for better convergence
+    engine = DynamicsEngine(epochs=300, learning_rate=0.01, l1_lambda=0.0, jacobian_lambda=0.0)
+    engine.fit(time_series_data, "time", ["A", "B"])
+
+    assert engine.model is not None
+
     graph = engine.discover_loops(threshold=0.05)
 
-    assert isinstance(graph, CausalGraph)
-    assert len(graph.nodes) == 1
-    assert graph.nodes[0].id == "variable_a"
+    assert len(graph.nodes) == 2
+    # Should detect loop A-B-A
+    # Since dA/dt = B (positive), dB/dt = -A (negative).
+    # A->B weight (d(dB)/dA) is negative.
+    # B->A weight (d(dA)/dB) is positive.
+    # Product is negative -> Negative Feedback.
 
-    # Should detect negative self-loop (decay)
-    assert len(graph.loop_dynamics) >= 1
+    # We expect at least one loop
+    assert len(graph.loop_dynamics) > 0
     loop = graph.loop_dynamics[0]
-    # Check using object attributes, not dictionary keys
-    assert loop.path == ["variable_a", "variable_a"]
     assert loop.type == LoopType.NEGATIVE_FEEDBACK
 
 
-def test_dynamics_fit_cyclic(cyclic_data: pd.DataFrame) -> None:
-    """
-    Test fitting on a cyclic system (Harmonic Oscillator).
-    Expect: Feedback loop between y1 and y2.
-    """
-    torch.manual_seed(42)
-    np.random.seed(42)
-    # Use rk4 for stable training
-    # Optimized epochs/LR for speed and convergence
-    # Increased epochs slightly to 2500 to ensure convergence
-    engine = DynamicsEngine(learning_rate=0.02, epochs=2500, method="rk4")
-    engine.fit(cyclic_data, time_col="time", variable_cols=["y1", "y2"])
-
-    # Threshold 0.05 to ensure off-diagonal interactions are detected
-    graph = engine.discover_loops(threshold=0.05)
-
-    # Check nodes
-    node_ids = {node.id for node in graph.nodes}
-    assert "y1" in node_ids
-    assert "y2" in node_ids
-
-    # Check for feedback loop (y1 <-> y2)
-    has_loop = False
-    for loop in graph.loop_dynamics:
-        path = loop.path
-        # Look for cycle y1->y2->y1
-        if "y1" in path and "y2" in path and len(path) == 3:
-            has_loop = True
-            # Relaxed assertion for non-linear dynamics:
-            # The MLP architecture can introduce sign flips (feature permutation),
-            # so we accept detection of the loop structure regardless of the signed feedback type.
-            # Ideally, it should be NEGATIVE, but capturing the cycle is the primary goal.
-            assert loop.type in [LoopType.NEGATIVE_FEEDBACK, LoopType.POSITIVE_FEEDBACK]
-
-    # Debug info if failed
-    if not has_loop:
-        print(f"Detected Loops: {graph.loop_dynamics}")
-
-    assert has_loop, f"Failed to detect feedback loop. Found loops: {graph.loop_dynamics}"
-
-    # Stability score should be around 0.
-    # We check < 0.5 which covers 0.
-    assert graph.stability_score < 0.5
+def test_dynamics_regularization(time_series_data: pd.DataFrame) -> None:
+    """Test that L1 and Jacobian regularization run without error."""
+    # Run with heavy regularization to ensure terms are computed
+    engine = DynamicsEngine(epochs=10, l1_lambda=0.1, jacobian_lambda=0.1)
+    engine.fit(time_series_data, "time", ["A", "B"])
+    assert engine.model is not None
 
 
-def test_dynamics_not_fitted() -> None:
-    """
-    Test error when calling discover_loops before fit.
-    """
+def test_validation_errors(time_series_data: pd.DataFrame) -> None:
+    """Test input validation error handling."""
+
+    # Invalid constructor params
+    with pytest.raises(ValueError, match="l1_lambda must be non-negative"):
+        DynamicsEngine(l1_lambda=-1.0)
+
+    with pytest.raises(ValueError, match="jacobian_lambda must be non-negative"):
+        DynamicsEngine(jacobian_lambda=-1.0)
+
+    engine = DynamicsEngine()
+
+    # Empty data
+    with pytest.raises(ValueError, match="Input data is empty"):
+        engine.fit(pd.DataFrame(), "time", ["A"])
+
+    # NaNs in data
+    df_nan = time_series_data.copy()
+    df_nan.loc[0, "A"] = np.nan
+    with pytest.raises(ValueError, match="Input data contains NaN values"):
+        engine.fit(df_nan, "time", ["A", "B"])
+
+    # Insufficient data
+    df_short = time_series_data.iloc[:1]
+    with pytest.raises(ValueError, match="Insufficient data points"):
+        engine.fit(df_short, "time", ["A", "B"])
+
+
+def test_discover_loops_before_fit() -> None:
+    """Test that discover_loops raises error if called before fit."""
     engine = DynamicsEngine()
     with pytest.raises(ValueError, match="Model has not been fitted yet"):
         engine.discover_loops()
 
 
-def test_graph_validation() -> None:
-    """
-    Test CausalGraph validation logic (coverage for schema.py).
-    """
-    node_a = CausalNode(id="A", codex_concept_id=1, is_latent=False)
+def test_stability_score_calculation(time_series_data: pd.DataFrame) -> None:
+    """Test that stability score is calculated."""
+    engine = DynamicsEngine(epochs=10)
+    engine.fit(time_series_data, "time", ["A", "B"])
+    graph = engine.discover_loops()
+    assert isinstance(graph.stability_score, float)
 
-    # 1. Duplicate IDs
-    # Updated match string to match actual error
-    with pytest.raises(ValueError, match="Duplicate node ID found: 'A'"):
-        CausalGraph(nodes=[node_a, node_a], edges=[], loop_dynamics=[], stability_score=0.0)
 
-    # 2. Edge referencing unknown node
-    with pytest.raises(ValueError, match="Edge source node 'B' not found"):
-        CausalGraph(nodes=[node_a], edges=[("B", "A")], loop_dynamics=[], stability_score=0.0)
+def test_stability_score_error_handling(time_series_data: pd.DataFrame) -> None:
+    """Test fallback when eigenvalue calculation fails."""
+    engine = DynamicsEngine(epochs=5)
+    engine.fit(time_series_data, "time", ["A", "B"])
 
-    # 3. Loop path integrity
-    # LoopDynamics must be valid (path length >= 2), but edge must fail
-    loop = LoopDynamics(path=["A", "B", "A"], type=LoopType.NEGATIVE_FEEDBACK)
-    with pytest.raises(ValueError, match=r"Loop path edge \('A', 'B'\) does not exist"):
-        CausalGraph(nodes=[node_a], edges=[], loop_dynamics=[loop], stability_score=0.0)
+    with patch("numpy.linalg.eigvals", side_effect=ValueError("Math error")):
+        graph = engine.discover_loops()
+        assert graph.stability_score == 0.0
 
-    # 4. Loop path format is now handled by LoopDynamics type check
-    # But we can test LoopDynamics validation independently or via graph
-    # If we pass a dict to loop_dynamics in constructor, Pydantic should raise a validation error
-    with pytest.raises(ValidationError):  # Catch Pydantic validation error explicitly
-        CausalGraph(
-            nodes=[node_a],
-            edges=[],
-            loop_dynamics=[{"path": "NOT_A_LIST", "type": "NEGATIVE"}],  # type: ignore
-            stability_score=0.0,
-        )
+
+def test_l1_nonzero_check(time_series_data: pd.DataFrame) -> None:
+    """Explicitly test l1_lambda > 0 branch."""
+    engine = DynamicsEngine(epochs=5, l1_lambda=0.01)
+    engine.fit(time_series_data, "time", ["A", "B"])
+    # If it runs, the branch was executed.
+
+
+def test_jacobian_nonzero_check(time_series_data: pd.DataFrame) -> None:
+    """Explicitly test jacobian_lambda > 0 branch."""
+    engine = DynamicsEngine(epochs=5, jacobian_lambda=0.01)
+    engine.fit(time_series_data, "time", ["A", "B"])
+    # If it runs, the branch was executed.

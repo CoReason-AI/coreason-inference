@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List
+from typing import Any, List
 
 import networkx as nx
 import numpy as np
@@ -32,7 +32,7 @@ class ActiveScientist:
     """
 
     def __init__(self) -> None:
-        self.cpdag: np.ndarray | None = None
+        self.cpdag: np.ndarray[Any, Any] | None = None
         self.graph: nx.Graph | None = None
         self.labels: List[str] = []
 
@@ -145,7 +145,7 @@ class ActiveScientist:
 
         return [proposal]
 
-    def _simulate_intervention(self, cpdag: np.ndarray, target_idx: int) -> np.ndarray:
+    def _simulate_intervention(self, cpdag: np.ndarray[Any, Any], target_idx: int) -> np.ndarray[Any, Any]:
         """
         Simulates an intervention on the target node.
         In a CPDAG, this means orienting all undirected edges connected to the target
@@ -174,7 +174,7 @@ class ActiveScientist:
 
         return sim_graph
 
-    def _apply_meek_rules(self, cpdag: np.ndarray) -> np.ndarray:
+    def _apply_meek_rules(self, cpdag: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """
         Iteratively applies Meek rules (currently Rule 1) to propagate orientations.
 
@@ -284,7 +284,7 @@ class ActiveScientist:
 
         return graph
 
-    def _count_oriented_edges(self, cpdag: np.ndarray) -> int:
+    def _count_oriented_edges(self, cpdag: np.ndarray[Any, Any]) -> int:
         """Counts total directed edges in the graph."""
         n_nodes = cpdag.shape[0]
         count = 0

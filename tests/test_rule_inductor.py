@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Tuple
+from typing import Any, Tuple
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,7 @@ from coreason_inference.schema import OptimizationOutput
 
 
 @pytest.fixture
-def synthetic_cate_data() -> Tuple[pd.DataFrame, np.ndarray]:
+def synthetic_cate_data() -> Tuple[pd.DataFrame, np.ndarray[Any, Any]]:
     """
     Generates synthetic data where Age > 50 and BMI < 30 leads to high CATE.
     """
@@ -57,7 +57,7 @@ def test_rule_inductor_initialization() -> None:
     assert inductor.tree_model is None
 
 
-def test_rule_inductor_fit(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+def test_rule_inductor_fit(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray[Any, Any]]) -> None:
     features, cate = synthetic_cate_data
     inductor = RuleInductor()
     inductor.fit(features, cate)
@@ -65,7 +65,7 @@ def test_rule_inductor_fit(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray])
     assert inductor.feature_names == ["Age", "BMI", "Biomarker"]
 
 
-def test_rule_inductor_induce(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+def test_rule_inductor_induce(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray[Any, Any]]) -> None:
     """Test the main method (without data re-input) for coverage."""
     features, cate = synthetic_cate_data
     inductor = RuleInductor(max_depth=3, min_samples_leaf=10)
@@ -84,7 +84,7 @@ def test_rule_inductor_induce(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarra
     assert "inaccurate without feature data" in result.safety_flags[0]
 
 
-def test_rule_inductor_induce_with_data(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+def test_rule_inductor_induce_with_data(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray[Any, Any]]) -> None:
     features, cate = synthetic_cate_data
     inductor = RuleInductor(max_depth=3, min_samples_leaf=10)
     inductor.fit(features, cate)
@@ -126,7 +126,7 @@ def test_empty_input() -> None:
         inductor.fit(pd.DataFrame(), np.array([]))
 
 
-def test_mismatched_length_input(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+def test_mismatched_length_input(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray[Any, Any]]) -> None:
     """Test mismatch length error (Coverage for line 50)."""
     features, cate = synthetic_cate_data
     # Pass mismatched lengths
@@ -135,7 +135,7 @@ def test_mismatched_length_input(synthetic_cate_data: Tuple[pd.DataFrame, np.nda
         inductor.fit(features, cate[:-1])
 
 
-def test_unfitted_error(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray]) -> None:
+def test_unfitted_error(synthetic_cate_data: Tuple[pd.DataFrame, np.ndarray[Any, Any]]) -> None:
     features, cate = synthetic_cate_data
     inductor = RuleInductor()
     with pytest.raises(ValueError):
