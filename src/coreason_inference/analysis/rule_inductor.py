@@ -125,7 +125,7 @@ class RuleInductor:
             raise ValueError("Model not fitted. Call fit() first.")
 
         y_true = np.array(cate_scores)
-        baseline_pos = np.mean(y_true > 0)
+        baseline_pos = np.mean(y_true)
 
         tree = self.tree_model.tree_
         n_nodes = tree.node_count
@@ -176,7 +176,7 @@ class RuleInductor:
             raise ValueError("Model not fitted.")
 
         y_true = np.array(cate_scores)
-        baseline_pos = np.mean(y_true > 0)
+        baseline_pos = np.mean(y_true)
 
         # Get leaf indices for all samples
         leaf_ids = self.tree_model.apply(features)
@@ -184,15 +184,15 @@ class RuleInductor:
         # Find leaf with highest PoS
         unique_leaves = np.unique(leaf_ids)
         best_leaf = -1
-        max_pos = -1.0
+        max_pos = -np.inf
 
         for leaf in unique_leaves:
             mask = leaf_ids == leaf
             leaf_y = y_true[mask]
-            # PoS = Proportion of responders
-            pos = np.mean(leaf_y > 0)
-            if pos > max_pos:
-                max_pos = pos
+            # Mean Effect (Mean CATE)
+            mean_effect = np.mean(leaf_y)
+            if mean_effect > max_pos:
+                max_pos = mean_effect
                 best_leaf = leaf
 
         if best_leaf == -1:  # pragma: no cover
@@ -207,7 +207,7 @@ class RuleInductor:
 
         # Add context to rationale
         for r in rules:
-            r.rationale = "Optimizes Responder Rate"
+            r.rationale = f"Optimizes Mean Effect (CATE: {max_pos:.2f})"
 
         return OptimizationOutput(
             new_criteria=rules, original_pos=float(baseline_pos), optimized_pos=float(max_pos), safety_flags=[]
