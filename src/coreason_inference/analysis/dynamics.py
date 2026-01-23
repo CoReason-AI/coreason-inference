@@ -68,20 +68,37 @@ class DynamicsEngine:
         method: str = "dopri5",
         l1_lambda: float = 0.0,
         jacobian_lambda: float = 0.0,
+        acyclicity_lambda: float = 0.0,
     ):
         if l1_lambda < 0:
             raise ValueError("l1_lambda must be non-negative.")
         if jacobian_lambda < 0:
             raise ValueError("jacobian_lambda must be non-negative.")
+        if acyclicity_lambda < 0:
+            raise ValueError("acyclicity_lambda must be non-negative.")
 
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.method = method
         self.l1_lambda = l1_lambda
         self.jacobian_lambda = jacobian_lambda
+        self.acyclicity_lambda = acyclicity_lambda
         self.model: Optional[ODEFunc] = None
         self.variable_names: List[str] = []
         self.scaler: Optional[StandardScaler] = None
+
+    def _compute_acyclicity_constraint(self, W: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the NOTEARS acyclicity constraint h(W) = tr(e^(W*W)) - d.
+        Where W*W is the element-wise square (Hadamard product) to ensure non-negativity.
+        """
+        d = W.shape[0]
+        # Element-wise square to ensure non-negativity (adjacency strength)
+        M = W * W
+        # Matrix exponential
+        M_exp = torch.linalg.matrix_exp(M)
+        h = torch.trace(M_exp) - d
+        return h
 
     def fit(self, data: pd.DataFrame, time_col: str, variable_cols: List[str]) -> None:
         """
@@ -159,7 +176,20 @@ class DynamicsEngine:
                 # Penalize Frobenius norm of Jacobian to encourage stability (Lipshitz continuity)
                 jacobian_loss = self.jacobian_lambda * torch.norm(J, p="fro")
 
-            total_loss = mse_loss + l1_loss + jacobian_loss
+            # Add NOTEARS Acyclicity Constraint
+            # Ensure tensor is on the same device as the model parameters
+            device = self.model.W.device
+            acyclicity_loss = torch.tensor(0.0, device=device)
+            if self.acyclicity_lambda > 0:
+                h_val = self._compute_acyclicity_constraint(self.model.W)
+                acyclicity_loss = self.acyclicity_lambda * h_val
+
+            # Note: l1_loss and jacobian_loss above might be on CPU if 0.0, which could cause issues on GPU.
+            # We fix the new term to be safe, assuming mse_loss is on the correct device.
+            if acyclicity_loss.device != mse_loss.device:
+                acyclicity_loss = acyclicity_loss.to(mse_loss.device)
+
+            total_loss = mse_loss + l1_loss + jacobian_loss + acyclicity_loss
 
             total_loss.backward()
             optimizer.step()
@@ -167,7 +197,7 @@ class DynamicsEngine:
             if epoch % 50 == 0:
                 logger.debug(
                     f"Epoch {epoch}, Loss: {total_loss.item()} "
-                    f"(MSE: {mse_loss.item()}, L1: {l1_loss.item()}, Jac: {jacobian_loss.item()})"
+                    f"(MSE: {mse_loss.item()}, L1: {l1_loss.item()}, Jac: {jacobian_loss.item()}, DAG: {acyclicity_loss.item()})"
                 )
 
         logger.info(f"Training complete. Final Loss: {total_loss.item()}")
