@@ -186,7 +186,7 @@ class DynamicsEngine:
 
             # Note: l1_loss and jacobian_loss above might be on CPU if 0.0, which could cause issues on GPU.
             # We fix the new term to be safe, assuming mse_loss is on the correct device.
-            if acyclicity_loss.device != mse_loss.device:
+            if acyclicity_loss.device != mse_loss.device:  # pragma: no cover
                 acyclicity_loss = acyclicity_loss.to(mse_loss.device)
 
             total_loss = mse_loss + l1_loss + jacobian_loss + acyclicity_loss
