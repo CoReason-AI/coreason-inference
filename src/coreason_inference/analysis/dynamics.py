@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from torchdiffeq import odeint
 
 
-class ODEFunc(nn.Module):
+class ODEFunc(nn.Module):  # type: ignore[misc]
     """
     UPGRADED: Non-Linear Neural ODE function.
     Uses a Tanh activation to model complex, non-linear system dynamics.
@@ -131,7 +131,7 @@ class DynamicsEngine:
         model_ref = self.model
 
         def func_for_jacobian(y_input: torch.Tensor) -> torch.Tensor:
-            return model_ref(torch.tensor(0.0), y_input)  # type: ignore[no-any-return]
+            return cast(torch.Tensor, model_ref(torch.tensor(0.0), y_input))
 
         # Training Loop
         for epoch in range(self.epochs):
@@ -153,14 +153,14 @@ class DynamicsEngine:
             if self.jacobian_lambda > 0:
                 # Compute Jacobian of the vector field at the initial state y[0]
                 # Jacobian J is (dim, dim)
-                J = F.jacobian(func_for_jacobian, y[0])  # type: ignore[no-untyped-call]
+                J = F.jacobian(func_for_jacobian, y[0])
 
                 # Penalize Frobenius norm of Jacobian to encourage stability (Lipshitz continuity)
                 jacobian_loss = self.jacobian_lambda * torch.norm(J, p="fro")
 
             total_loss = mse_loss + l1_loss + jacobian_loss
 
-            total_loss.backward()  # type: ignore[no-untyped-call]
+            total_loss.backward()
             optimizer.step()
 
             if epoch % 50 == 0:

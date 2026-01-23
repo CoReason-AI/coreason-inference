@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ from coreason_inference.utils.logger import logger
 from sklearn.preprocessing import StandardScaler
 
 
-class CausalVAE(nn.Module):
+class CausalVAE(nn.Module):  # type: ignore[misc]
     def __init__(self, input_dim: int, hidden_dim: int = 32, latent_dim: int = 5):
         super().__init__()
         # Encoder
@@ -59,7 +59,7 @@ class CausalVAE(nn.Module):
         Helper method for SHAP explanation. Returns only the mean of the latent distribution.
         """
         h_enc = self.activation(self.encoder_hidden(x))
-        return self.mu_layer(h_enc)  # type: ignore[no-any-return]
+        return cast(torch.Tensor, self.mu_layer(h_enc))
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -67,10 +67,10 @@ class CausalVAE(nn.Module):
         """
         h_dec = self.activation(self.decoder_hidden(z))
         x_hat = self.decoder_output(h_dec)
-        return x_hat  # type: ignore[no-any-return]
+        return cast(torch.Tensor, x_hat)
 
 
-class _ShapEncoderWrapper(nn.Module):
+class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
     """
     Helper wrapper for SHAP explanation to isolate the encoder mean.
     """
@@ -157,7 +157,7 @@ class LatentMiner:
             # Total Loss
             loss = recon_loss + self.beta * kld_loss
 
-            loss.backward()  # type: ignore[no-untyped-call]
+            loss.backward()
 
             optimizer.step()
 
@@ -264,7 +264,7 @@ class LatentMiner:
                 x_torch = torch.tensor(x_np, dtype=torch.float32, device=self.device)
                 with torch.no_grad():
                     out = wrapped_model(x_torch)
-                return out.cpu().numpy()  # type: ignore[no-any-return]
+                return cast(np.ndarray[Any, Any], out.cpu().numpy())
 
             # Using a smaller background for KernelExplainer as it is slow
             background_small = background_tensor.cpu().numpy()[:10]  # Very small background
