@@ -26,8 +26,7 @@ DML_FOREST_BACKEND = "backdoor.econml.dml.CausalForestDML"
 
 
 class CausalEstimator:
-    """
-    The De-Confounder & Stratifier: Calculates True Effect and Individual Response.
+    """The De-Confounder & Stratifier: Calculates True Effect and Individual Response.
 
     Uses Double Machine Learning (DML) and Causal Forests (EconML) to estimate
     Average Treatment Effects (ATE) and Conditional ATE (CATE).
@@ -35,8 +34,7 @@ class CausalEstimator:
     """
 
     def __init__(self, data: pd.DataFrame):
-        """
-        Initialize the estimator with the dataset.
+        """Initialize the estimator with the dataset.
 
         Args:
             data: A pandas DataFrame containing the observational data.
@@ -54,8 +52,7 @@ class CausalEstimator:
         num_simulations: int = 10,
         target_patient_id: Optional[str] = None,
     ) -> InterventionResult:
-        """
-        Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
+        """Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
 
         Automatically runs a Placebo Treatment Refuter. If the refutation fails (p-value <= 0.05),
         the estimate is flagged as INVALID (RefutationFailed).
@@ -72,6 +69,9 @@ class CausalEstimator:
 
         Returns:
             InterventionResult: The estimated effect (ATE or individual CATE) and optional CATE distribution.
+
+        Raises:
+            ValueError: If estimation parameters are invalid or data is missing.
         """
         logger.info(f"Starting causal estimation: Treatment='{treatment}', Outcome='{outcome}', Method='{method}'")
 
@@ -119,8 +119,20 @@ class CausalEstimator:
     def _fit_and_estimate(
         self, treatment: str, outcome: str, confounders: List[str], method: str, treatment_is_binary: bool
     ) -> Tuple[CausalModel, Any, Any]:
-        """
-        Configures the CausalModel, identifies the effect, and runs the estimation.
+        """Configures the CausalModel, identifies the effect, and runs the estimation.
+
+        Args:
+            treatment: Treatment variable.
+            outcome: Outcome variable.
+            confounders: List of confounders.
+            method: Estimation method.
+            treatment_is_binary: Whether treatment is binary.
+
+        Returns:
+            Tuple: (model, identified_estimand, estimate)
+
+        Raises:
+            Exception: If estimation fails in backend.
         """
         effect_modifiers = confounders if method == METHOD_FOREST else []
 
@@ -156,9 +168,19 @@ class CausalEstimator:
         patient_id_col: str,
         target_patient_id: Optional[str],
     ) -> Tuple[Optional[float], str]:
-        """
-        Determines whether to return the Population ATE or a Personalized CATE.
-        Returns (effect_value, result_label).
+        """Determines whether to return the Population ATE or a Personalized CATE.
+
+        Args:
+            estimate: The estimation object from DoWhy.
+            cate_estimates: List of CATE estimates (if available).
+            patient_id_col: Column containing patient IDs.
+            target_patient_id: Specific patient ID to return CATE for.
+
+        Returns:
+            Tuple[Optional[float], str]: (effect_value, result_label)
+
+        Raises:
+            ValueError: If target patient ID is not found.
         """
         if target_patient_id and cate_estimates:
             # Personalized Inference
@@ -185,9 +207,18 @@ class CausalEstimator:
     def _refute_estimate(
         self, model: CausalModel, identified_estimand: Any, estimate: Any, num_simulations: int
     ) -> RefutationStatus:
-        """
-        Runs the Placebo Treatment Refuter.
+        """Runs the Placebo Treatment Refuter.
+
         Returns PASSED only if the new estimate is NOT statistically significant (p > 0.05).
+
+        Args:
+            model: The CausalModel instance.
+            identified_estimand: The identified estimand.
+            estimate: The estimate object.
+            num_simulations: Number of simulations to run.
+
+        Returns:
+            RefutationStatus: PASSED or FAILED.
         """
         try:
             refutation = model.refute_estimate(
@@ -211,6 +242,14 @@ class CausalEstimator:
             return RefutationStatus.FAILED
 
     def _build_failure_result(self, treatment: str) -> InterventionResult:
+        """Builds a failure result object when estimation fails.
+
+        Args:
+            treatment: Treatment variable name.
+
+        Returns:
+            InterventionResult: A failed result object.
+        """
         return InterventionResult(
             patient_id="ERROR",
             intervention=f"do({treatment})",
@@ -221,8 +260,14 @@ class CausalEstimator:
         )
 
     def _get_method_params(self, method: str, treatment_is_binary: bool) -> Tuple[str, Dict[str, Any]]:
-        """
-        Constructs the method name and parameters for the EconML estimator.
+        """Constructs the method name and parameters for the EconML estimator.
+
+        Args:
+            method: Estimation method ('linear' or 'forest').
+            treatment_is_binary: Whether treatment is binary.
+
+        Returns:
+            Tuple[str, Dict[str, Any]]: Method name and parameters dictionary.
         """
         model_t = LogisticRegression() if treatment_is_binary else LinearRegression()
         model_y = LinearRegression()
@@ -243,8 +288,14 @@ class CausalEstimator:
         return method_name, {"init_params": init_params, "fit_params": {}}
 
     def _extract_cate_estimates(self, estimate: Any, effect_modifiers: List[str]) -> Optional[List[float]]:
-        """
-        Extracts Conditional Average Treatment Effects (CATE) from the fitted estimator.
+        """Extracts Conditional Average Treatment Effects (CATE) from the fitted estimator.
+
+        Args:
+            estimate: The estimate object containing the fitted model.
+            effect_modifiers: List of effect modifier columns.
+
+        Returns:
+            Optional[List[float]]: List of CATE values or None if extraction fails.
         """
         try:
             # EconML expects X (effect modifiers) to predict CATE.
@@ -255,8 +306,14 @@ class CausalEstimator:
             return None
 
     def _extract_confidence_intervals(self, estimate: Any, default_value: float) -> Tuple[float, float]:
-        """
-        Safely extracts confidence intervals from the estimate.
+        """Safely extracts confidence intervals from the estimate.
+
+        Args:
+            estimate: The estimate object.
+            default_value: Value to return if extraction fails.
+
+        Returns:
+            Tuple[float, float]: (Lower CI, Upper CI).
         """
         try:
             ci = estimate.get_confidence_intervals()

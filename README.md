@@ -1,83 +1,76 @@
 # coreason-inference
 
-**The Causal Intelligence Engine for Discovery, Stratification, and Trial Optimization.**
+**Causal Discovery, Representation Learning, Active Experimentation, & Trial Optimization**
 
-`coreason-inference` is the deterministic "Principal Investigator" of the CoReason ecosystem. Unlike probabilistic models that predict correlation, this engine uncovers **Mechanism** and **Heterogeneity**. It enables the **Discover-Stratify-Simulate-Act Loop** to discover biological feedback loops, stratify patient subgroups (Super-Responders), and simulate counterfactual outcomes.
-
----
-
-[![License: Prosperity 3.0](https://img.shields.io/badge/License-Prosperity%203.0-blue)](https://prosperitylicense.com/versions/3.0.0)
-[![CI](https://github.com/CoReason-AI/coreason_inference/actions/workflows/ci.yml/badge.svg)](https://github.com/CoReason-AI/coreason_inference/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Prosperity%203.0-blue)](https://prosperitylicense.com/versions/3.0.0)
+[![Build Status](https://github.com/CoReason-AI/coreason_inference/actions/workflows/build.yml/badge.svg)](https://github.com/CoReason-AI/coreason_inference/actions)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Documentation](https://img.shields.io/badge/docs-product_requirements-blue)](docs/product_requirements.md)
+
+**coreason-inference** is the **Causal Intelligence** engine of the CoReason ecosystem. Unlike probabilistic models that predict correlation, this engine is designed to uncover **Mechanism** and **Heterogeneity**. It serves as the "Principal Investigator," discovering biological feedback loops, identifying latent confounders, and optimizing clinical trials through causal stratification and virtual simulation.
 
 ## Features
 
-*   **The Dynamics Engine (Cyclic Discovery):** Discovers feedback loops and system dynamics using **Neural ODEs** and structure learning (NOTEARS-Cyclic).
-*   **The Latent Miner (Representation Learning):** Discovers hidden confounders using **Causal Variational Autoencoders (VAEs)** with independence constraints.
-*   **The De-Confounder & Stratifier (Effect Estimation):** Calculates True Effect and Individual Response (CATE) using **Double Machine Learning (DML)** and **Causal Forests**.
-*   **The Active Scientist (Experimental Design):** Resolves causal ambiguity by identifying the Markov Equivalence Class and proposing optimal experiments (Interventions).
-*   **The Rule Inductor (TPP Optimizer):** Translates complex CATE scores into human-readable **Clinical Protocols** to optimize Phase 3 Probability of Success.
-*   **The Virtual Simulator (Safety & Efficacy):** "Re-runs" Phase 2 trials *in silico* by generating "Digital Twins" and scanning for toxicity pathways.
+*   **Cyclic Discovery (Dynamics Engine):** Uses Neural ODEs to discover feedback loops and system dynamics in biological systems (Directed Cyclic Graphs).
+*   **Latent Phenotyping (Latent Miner):** Disentangles hidden confounders using Causal VAEs to identify unmeasured variables driving outcomes.
+*   **Heterogeneous Stratification (Causal Estimator):** Estimates Individual Treatment Effects (CATE) using Causal Forests to identify Super-Responders.
+*   **Active Experimentation (Active Scientist):** Proposes physical experiments (e.g., Gene Knockouts) to resolve causal ambiguity using Information Gain heuristics.
+*   **Protocol Optimization (Rule Inductor):** Translates CATE scores into human-readable clinical protocol rules to maximize Phase 3 Probability of Success (PoS).
+*   **Virtual Trials (Virtual Simulator):** Simulates Phase 3 trials in-silico using synthetic "Digital Twins" to predict efficacy and scan for safety risks.
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
-```
-
-or via Poetry:
-
-```bash
-poetry install
+pip install coreason-inference
 ```
 
 ## Usage
+
+Here is a quick example of how to initialize and use the `InferenceEngine`:
 
 ```python
 import pandas as pd
 from coreason_inference.engine import InferenceEngine
 
-# 1. Initialize the engine
+# 1. Initialize the Engine
 engine = InferenceEngine()
 
-# 2. Load your time-series observational data
-# Ensure data contains a time column and variable columns
-data = pd.DataFrame({
-    "time": [0, 1, 2, 3, 4],
-    "Drug_Dose": [10, 20, 10, 0, 10],
-    "Blood_Pressure": [120, 110, 115, 125, 118],
-    "Biomarker_X": [0.5, 0.4, 0.45, 0.6, 0.55]
-})
+# 2. Load your data
+# Data should contain time-series or observational data
+data = pd.read_csv("patient_data.csv")
+variable_cols = ["Glucose", "Insulin", "HbA1c"]
+time_col = "Time"
 
-# 3. Execute the full discovery pipeline
+# 3. Analyze: Discover Dynamics & Latents
 result = engine.analyze(
     data=data,
-    time_col="time",
-    variable_cols=["Drug_Dose", "Blood_Pressure", "Biomarker_X"],
-    estimate_effect_for=("Drug_Dose", "Blood_Pressure")
+    time_col=time_col,
+    variable_cols=variable_cols,
+    estimate_effect_for=("Insulin", "Glucose")
 )
 
-# 4. Explore Results
-print("Discovered Graph Edges:", result.graph.edges)
-print("Feedback Loops:", result.graph.loop_dynamics)
+# 4. Inspect the Causal Graph
+print(f"Discovered Graph Edges: {result.graph.edges}")
+print(f"Detected Loops: {result.graph.loop_dynamics}")
 
-# 5. Analyze Heterogeneity & Induce Rules
-# (Requires sufficient data size for valid estimation)
-try:
-    forest_result = engine.analyze_heterogeneity(
-        treatment="Drug_Dose",
-        outcome="Blood_Pressure",
-        confounders=["Biomarker_X"]
-    )
+# 5. Optimize for Heterogeneity (Identify Super-Responders)
+# Estimate CATE for a specific treatment
+engine.analyze_heterogeneity(
+    treatment="Insulin",
+    outcome="Glucose",
+    confounders=["Age", "BMI"] + list(result.latents.columns)
+)
 
-    optimization = engine.induce_rules()
-    print("Optimized Inclusion Criteria:", optimization.new_criteria)
-except ValueError as e:
-    print(f"Skipping heterogeneity analysis: {e}")
+# Induce rules to find the best subgroup
+optimization_output = engine.induce_rules()
+
+print("Recommended Protocol Criteria:")
+for rule in optimization_output.new_criteria:
+    print(f" - {rule.feature} {rule.operator} {rule.value} ({rule.rationale})")
+
+print(f"Projected Probability of Success: {optimization_output.optimized_pos:.2f}")
 ```
 
-## License
+## Documentation
 
-This software is dual-licensed under the **Prosperity Public License 3.0**.
-Commercial use beyond a 30-day trial requires a separate license.
-See `LICENSE` for details.
+For detailed requirements and architectural philosophy, please refer to the [Product Requirements Document](docs/product_requirements.md).

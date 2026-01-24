@@ -26,8 +26,7 @@ OPERATOR_MAP: Dict[str, Callable[[Any, Any], Any]] = {
 
 
 class VirtualSimulator:
-    """
-    The Virtual Simulator: Safety & Efficacy.
+    """The Virtual Simulator: Safety & Efficacy.
 
     "Re-runs" Phase 2 trials in silico by generating synthetic cohorts ("Digital Twins")
     that match specific inclusion/exclusion criteria.
@@ -35,6 +34,7 @@ class VirtualSimulator:
     """
 
     def __init__(self) -> None:
+        """Initializes the Virtual Simulator."""
         pass
 
     def generate_synthetic_cohort(
@@ -44,8 +44,7 @@ class VirtualSimulator:
         rules: List[ProtocolRule] | None = None,
         max_retries: int = 10,
     ) -> pd.DataFrame:
-        """
-        Generates a synthetic cohort with Adaptive Sampling to ensure retention.
+        """Generates a synthetic cohort with Adaptive Sampling to ensure retention.
 
         Uses the Latent Miner to sample "Digital Twins" from the latent space
         and filters them according to the provided Protocol Rules.
@@ -58,6 +57,9 @@ class VirtualSimulator:
 
         Returns:
             pd.DataFrame: The filtered synthetic cohort (Digital Twins).
+
+        Raises:
+            Exception: If LatentMiner generation fails.
         """
         target_size = n_samples
         collected_cohorts = []
@@ -107,8 +109,7 @@ class VirtualSimulator:
         return final_cohort
 
     def scan_safety(self, graph: CausalGraph, treatment: str, adverse_outcomes: List[str]) -> List[str]:
-        """
-        Scans the causal graph for pathways leading from the treatment to adverse outcomes.
+        """Scans the causal graph for pathways leading from the treatment to adverse outcomes.
 
         Propagates the effect of the treatment node through the graph to check
         if it reaches any defined adverse outcome nodes (e.g., "Renal_Failure").
@@ -157,8 +158,7 @@ class VirtualSimulator:
         confounders: List[str],
         method: str = "forest",
     ) -> InterventionResult:
-        """
-        Simulates the trial outcome on the synthetic cohort using Causal Estimator.
+        """Simulates the trial outcome on the synthetic cohort using Causal Estimator.
 
         Args:
             cohort: The synthetic cohort DataFrame.
@@ -172,6 +172,7 @@ class VirtualSimulator:
 
         Raises:
             ValueError: If cohort is empty or columns are missing.
+            Exception: If estimator fails.
         """
         if cohort.empty:
             raise ValueError("Cannot simulate trial on empty cohort.")
@@ -199,8 +200,14 @@ class VirtualSimulator:
             raise e
 
     def _apply_rules(self, data: pd.DataFrame, rules: List[ProtocolRule]) -> pd.DataFrame:
-        """
-        Filters the dataframe based on the list of ProtocolRules.
+        """Filters the dataframe based on the list of ProtocolRules.
+
+        Args:
+            data: Input dataframe.
+            rules: List of rules to apply.
+
+        Returns:
+            pd.DataFrame: Filtered dataframe.
         """
         filtered_data = data.copy()
 
