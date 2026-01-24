@@ -13,8 +13,9 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
+from causallearn.graph.Endpoint import Endpoint
 
-from coreason_inference.analysis.active_scientist import ENDPOINT_HEAD, ENDPOINT_TAIL, ActiveScientist
+from coreason_inference.analysis.active_scientist import ActiveScientist
 
 
 @pytest.fixture
@@ -76,11 +77,11 @@ def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> N
     # Mock CPDAG to be sure it is A - B - C
     adj = np.zeros((3, 3))
     # A(0) - B(1)
-    adj[0, 1] = ENDPOINT_TAIL
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.TAIL.value
+    adj[1, 0] = Endpoint.TAIL.value
     # B(1) - C(2)
-    adj[1, 2] = ENDPOINT_TAIL
-    adj[2, 1] = ENDPOINT_TAIL
+    adj[1, 2] = Endpoint.TAIL.value
+    adj[2, 1] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
@@ -127,7 +128,7 @@ def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> N
     # OR better, update the code to use Degree as tie-breaker.
 
     assert proposal.target in ["A", "B", "C"]
-    assert "Simulating intervention" in proposal.rationale
+    assert "Max-Degree Heuristic" in proposal.rationale
 
 
 def test_empty_data_error() -> None:
@@ -160,10 +161,10 @@ def test_no_undirected_edges() -> None:
     # M[1, 2] = HEAD (1), M[2, 1] = TAIL (-1) -> B->C
 
     adj = np.zeros((3, 3))
-    adj[0, 1] = ENDPOINT_HEAD
-    adj[1, 0] = ENDPOINT_TAIL
-    adj[1, 2] = ENDPOINT_HEAD
-    adj[2, 1] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.ARROW.value
+    adj[1, 0] = Endpoint.TAIL.value
+    adj[1, 2] = Endpoint.ARROW.value
+    adj[2, 1] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
@@ -204,8 +205,8 @@ def test_star_graph_heuristic() -> None:
     # Create undirected edges between Hub and everyone else
     for i in range(4):
         # TAIL at both ends
-        adj[i, hub_idx] = ENDPOINT_TAIL
-        adj[hub_idx, i] = ENDPOINT_TAIL
+        adj[i, hub_idx] = Endpoint.TAIL.value
+        adj[hub_idx, i] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
@@ -215,7 +216,8 @@ def test_star_graph_heuristic() -> None:
 
     # Check rationale for gain count
     # Gain should be 4 (baseline 0, result 4)
-    assert "Gain: +4" in proposals[0].rationale
+    # New logic rationale: "It has the highest number of incident undirected edges (4)"
+    assert "undirected edges (4)" in proposals[0].rationale
 
 
 def test_propagation_gain() -> None:
