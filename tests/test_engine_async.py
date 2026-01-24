@@ -139,16 +139,15 @@ async def test_error_handling_in_async_analyze() -> None:
     engine.active_scientist = MagicMock()
 
     # We need to simulate estimator failure
-    with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
-        instance = MockEstimator.return_value
-        instance.estimate_effect.side_effect = Exception("Boom")
+    # Use a concrete mock class to ensure side_effect works across threads in run_sync
+    class BrokenEstimator:
+        def __init__(self, df: pd.DataFrame) -> None:
+            pass
 
-        # Ensure the estimator property returns this instance when accessed
-        # engine.estimator is usually set inside analyze, but let's pre-set to be safe
-        # actually analyze() instantiates CausalEstimator via self._estimator property or inside.
-        # It uses self.estimator = self._estimator which instantiates CausalEstimator(data).
-        # Our patch mocks the class, so instantiation returns the mock instance.
+        def estimate_effect(self, *args: object, **kwargs: object) -> None:
+            raise RuntimeError("Boom")
 
+    with patch("coreason_inference.engine.CausalEstimator", side_effect=BrokenEstimator):
         # This should catch exception and log error, not raise
         await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
 
