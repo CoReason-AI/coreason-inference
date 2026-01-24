@@ -27,8 +27,11 @@ DML_FOREST_BACKEND = "backdoor.econml.dml.CausalForestDML"
 
 class CausalEstimator:
     """
-    Estimates the causal effect of a treatment on an outcome using Double Machine Learning (DML)
-    and validates the result using a Placebo Refuter.
+    The De-Confounder & Stratifier: Calculates True Effect and Individual Response.
+
+    Uses Double Machine Learning (DML) and Causal Forests (EconML) to estimate
+    Average Treatment Effects (ATE) and Conditional ATE (CATE).
+    Enforces validity via mandatory Placebo Refutation.
     """
 
     def __init__(self, data: pd.DataFrame):
@@ -53,6 +56,9 @@ class CausalEstimator:
     ) -> InterventionResult:
         """
         Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
+
+        Automatically runs a Placebo Treatment Refuter. If the refutation fails (p-value <= 0.05),
+        the estimate is flagged as INVALID (RefutationFailed).
 
         Args:
             treatment: The column name of the treatment variable.
@@ -181,6 +187,7 @@ class CausalEstimator:
     ) -> RefutationStatus:
         """
         Runs the Placebo Treatment Refuter.
+        Returns PASSED only if the new estimate is NOT statistically significant (p > 0.05).
         """
         try:
             refutation = model.refute_estimate(

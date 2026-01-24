@@ -32,6 +32,12 @@ from coreason_inference.utils.logger import logger
 class InferenceResult(BaseModel):
     """
     Container for the results of the full causal inference pipeline.
+
+    Attributes:
+        graph: The discovered causal graph (including loops).
+        latents: Discovered latent variables (Z).
+        proposals: List of experiment proposals from Active Scientist.
+        augmented_data: Original data augmented with latent variables.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -46,6 +52,14 @@ class InferenceEngine:
     """
     The 'Principal Investigator' / Mechanism Engine.
     Orchestrates the Discover-Represent-Simulate-Act loop.
+
+    This engine integrates:
+    1.  DynamicsEngine: For feedback loop discovery.
+    2.  LatentMiner: For representation learning (confounders).
+    3.  ActiveScientist: For experimental design.
+    4.  CausalEstimator: For effect estimation (ATE/CATE).
+    5.  RuleInductor: For subgroup optimization (TPP).
+    6.  VirtualSimulator: For in-silico trials.
     """
 
     def __init__(
@@ -56,6 +70,16 @@ class InferenceEngine:
         virtual_simulator: Optional[VirtualSimulator] = None,
         rule_inductor: Optional[RuleInductor] = None,
     ) -> None:
+        """
+        Initializes the InferenceEngine with its component engines.
+
+        Args:
+            dynamics_engine: Engine for discovering system dynamics and loops.
+            latent_miner: Engine for discovering latent confounders.
+            active_scientist: Engine for proposing experiments.
+            virtual_simulator: Engine for running virtual trials.
+            rule_inductor: Engine for inducing optimization rules.
+        """
         self.dynamics_engine = dynamics_engine or DynamicsEngine()
         self.latent_miner = latent_miner or LatentMiner()
         self.active_scientist = active_scientist or ActiveScientist()
@@ -87,7 +111,7 @@ class InferenceEngine:
         estimate_effect_for: Optional[tuple[str, str]] = None,
     ) -> InferenceResult:
         """
-        Executes the full causal discovery pipeline.
+        Executes the full causal discovery pipeline (Discover-Represent-Act-Simulate).
 
         Args:
             data: Input dataframe containing time-series data.
@@ -96,7 +120,8 @@ class InferenceEngine:
             estimate_effect_for: Optional tuple (treatment, outcome) to run estimation for.
 
         Returns:
-            InferenceResult: The consolidated results.
+            InferenceResult: The consolidated results containing the graph, latents, proposals,
+            and augmented data.
         """
         logger.info("Starting Inference Engine Pipeline...")
 
@@ -205,6 +230,14 @@ class InferenceEngine:
     def estimate_effect(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
         """
         Direct access to the CausalEstimator (Simulate).
+
+        Args:
+            treatment: Treatment variable name.
+            outcome: Outcome variable name.
+            confounders: List of confounders.
+
+        Returns:
+            InterventionResult: The result of the intervention estimation.
         """
         return self._estimator.estimate_effect(treatment, outcome, confounders)
 
@@ -212,6 +245,14 @@ class InferenceEngine:
         """
         Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
         Stores the estimates for subsequent rule induction.
+
+        Args:
+            treatment: Treatment variable name.
+            outcome: Outcome variable name.
+            confounders: List of confounders.
+
+        Returns:
+            InterventionResult: Result containing ATE and CATE estimates.
         """
         logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
 
@@ -245,6 +286,9 @@ class InferenceEngine:
         Args:
             feature_cols: Optional list of columns to use as features for rule induction.
                           If None, uses all numeric columns from augmented_data (excluding metadata).
+
+        Returns:
+            OptimizationOutput: The optimization rules and projected uplift.
         """
         if self.cate_estimates is None:
             raise ValueError("No CATE estimates found. Run analyze_heterogeneity() first.")
