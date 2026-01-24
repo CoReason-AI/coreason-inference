@@ -117,7 +117,7 @@ class TestLatentMinerComplex:
 
         miner.model.eval()
         with torch.no_grad():
-            x_hat, _, _ = miner.model(X_tensor)
+            x_hat, _, _, _ = miner.model(X_tensor)
 
         final_mse = nn.functional.mse_loss(x_hat, X_tensor).item()
 
