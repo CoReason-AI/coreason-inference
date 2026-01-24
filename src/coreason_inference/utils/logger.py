@@ -17,7 +17,14 @@ __all__ = ["logger", "setup_logging"]
 
 
 def setup_logging() -> None:
-    """Configure the logger with default sinks and formats."""
+    """Configures the application logging using Loguru.
+
+    Sets up:
+    1. A stderr handler for human-readable console output.
+    2. A file handler with rotation and retention policies for persistent logs.
+
+    The log file is created at `logs/app.log`.
+    """
     # Remove default handler
     logger.remove()
 
@@ -25,12 +32,8 @@ def setup_logging() -> None:
     logger.add(
         sys.stderr,
         level="INFO",
-        format=(
-            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-            "<level>{message}</level>"
-        ),
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
     )
 
     # Ensure logs directory exists
@@ -49,5 +52,5 @@ def setup_logging() -> None:
     )
 
 
-# Initialize logger on import
+# Initialize logging on module import
 setup_logging()
