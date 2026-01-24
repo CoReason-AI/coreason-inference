@@ -143,6 +143,12 @@ async def test_error_handling_in_async_analyze() -> None:
         instance = MockEstimator.return_value
         instance.estimate_effect.side_effect = Exception("Boom")
 
+        # Ensure the estimator property returns this instance when accessed
+        # engine.estimator is usually set inside analyze, but let's pre-set to be safe
+        # actually analyze() instantiates CausalEstimator via self._estimator property or inside.
+        # It uses self.estimator = self._estimator which instantiates CausalEstimator(data).
+        # Our patch mocks the class, so instantiation returns the mock instance.
+
         # This should catch exception and log error, not raise
         await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
 

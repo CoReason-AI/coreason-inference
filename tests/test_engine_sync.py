@@ -34,3 +34,16 @@ def test_sync_facade_call() -> None:
         assert result == mock_result
         # Ensure it was called
         instance.estimate_effect.assert_called_once()
+
+
+def test_sync_facade_coverage() -> None:
+    """Cover missing lines in Sync Facade (Context Manager and Getters)."""
+    # 459, 462: Context Manager
+    with InferenceEngine() as engine:
+        # 514: latents getter
+        assert engine.latents is None
+
+        # Set it to verify getter works with value
+        engine.latents = pd.DataFrame({"Z": [1]})
+        assert engine.latents is not None
+        assert "Z" in engine.latents.columns
