@@ -13,16 +13,11 @@ from typing import Any, List
 import networkx as nx
 import numpy as np
 import pandas as pd
+from causallearn.graph.Endpoint import Endpoint
 from causallearn.search.ConstraintBased.PC import pc
 
 from coreason_inference.schema import ExperimentProposal
 from coreason_inference.utils.logger import logger
-
-# Graph Endpoint Constants (based on causal-learn conventions)
-# Matrix M[i, j] represents the endpoint at j for the edge between i and j.
-ENDPOINT_NULL = 0
-ENDPOINT_TAIL = -1  # Tail (-)
-ENDPOINT_HEAD = 1  # Arrowhead (>)
 
 
 class ActiveScientist:
@@ -80,18 +75,15 @@ class ActiveScientist:
 
         # Calculate Undirected Degree for each node
         # Undirected Edge (i, j): M[i, j] == TAIL and M[j, i] == TAIL
+        # Vectorized check for undirected edges
+        is_tail_at_j = self.cpdag == Endpoint.TAIL.value
+        is_tail_at_i = self.cpdag.T == Endpoint.TAIL.value
+        undirected_matrix = is_tail_at_j & is_tail_at_i
 
-        degrees = np.zeros(n_nodes, dtype=int)
-        has_undirected = False
+        # Since matrix is symmetric for undirected edges, sum along rows gives total undirected degree
+        degrees = np.sum(undirected_matrix, axis=1)
 
-        for i in range(n_nodes):
-            for j in range(i + 1, n_nodes):
-                if self.cpdag[i, j] == ENDPOINT_TAIL and self.cpdag[j, i] == ENDPOINT_TAIL:
-                    degrees[i] += 1
-                    degrees[j] += 1
-                    has_undirected = True
-
-        if not has_undirected:
+        if degrees.sum() == 0:
             logger.info("No undirected edges found. CPDAG is fully oriented (DAG).")
             return []
 

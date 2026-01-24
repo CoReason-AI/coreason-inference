@@ -2,8 +2,9 @@
 # Licensed under the Prosperity Public License 3.0.0
 
 import numpy as np
+from causallearn.graph.Endpoint import Endpoint
 
-from coreason_inference.analysis.active_scientist import ENDPOINT_TAIL, ActiveScientist
+from coreason_inference.analysis.active_scientist import ActiveScientist
 
 
 def test_max_degree_heuristic_star_graph() -> None:
@@ -30,8 +31,8 @@ def test_max_degree_heuristic_star_graph() -> None:
     adj = np.zeros((n, n))
     for i in range(4):
         # Undirected edge: Tail at both ends
-        adj[i, hub_idx] = ENDPOINT_TAIL
-        adj[hub_idx, i] = ENDPOINT_TAIL
+        adj[i, hub_idx] = Endpoint.TAIL.value
+        adj[hub_idx, i] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
@@ -71,12 +72,12 @@ def test_max_degree_heuristic_chain_graph() -> None:
     adj = np.zeros((3, 3))
 
     # A-B
-    adj[0, 1] = ENDPOINT_TAIL
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.TAIL.value
+    adj[1, 0] = Endpoint.TAIL.value
 
     # B-C
-    adj[1, 2] = ENDPOINT_TAIL
-    adj[2, 1] = ENDPOINT_TAIL
+    adj[1, 2] = Endpoint.TAIL.value
+    adj[2, 1] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
@@ -104,10 +105,8 @@ def test_max_degree_heuristic_fully_oriented() -> None:
     # if cpdag[i, j] == ENDPOINT_HEAD and cpdag[j, i] == ENDPOINT_TAIL: Directed i->j
     # So to make A->B: M[0, 1]=HEAD, M[1, 0]=TAIL
 
-    from coreason_inference.analysis.active_scientist import ENDPOINT_HEAD
-
-    adj[0, 1] = ENDPOINT_HEAD
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.ARROW.value
+    adj[1, 0] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = ["A", "B"]
@@ -132,17 +131,17 @@ def test_tie_breaking_square_graph() -> None:
     adj = np.zeros((4, 4))
 
     # A-B (0-1)
-    adj[0, 1] = ENDPOINT_TAIL
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.TAIL.value
+    adj[1, 0] = Endpoint.TAIL.value
     # B-C (1-2)
-    adj[1, 2] = ENDPOINT_TAIL
-    adj[2, 1] = ENDPOINT_TAIL
+    adj[1, 2] = Endpoint.TAIL.value
+    adj[2, 1] = Endpoint.TAIL.value
     # C-D (2-3)
-    adj[2, 3] = ENDPOINT_TAIL
-    adj[3, 2] = ENDPOINT_TAIL
+    adj[2, 3] = Endpoint.TAIL.value
+    adj[3, 2] = Endpoint.TAIL.value
     # D-A (3-0)
-    adj[3, 0] = ENDPOINT_TAIL
-    adj[0, 3] = ENDPOINT_TAIL
+    adj[3, 0] = Endpoint.TAIL.value
+    adj[0, 3] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
@@ -171,19 +170,19 @@ def test_disconnected_components() -> None:
     adj = np.zeros((5, 5))
 
     # Comp 1: A(0)-B(1)
-    adj[0, 1] = ENDPOINT_TAIL
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.TAIL.value
+    adj[1, 0] = Endpoint.TAIL.value
 
     # Comp 2: C(2)-D(3)-E(4)-C(2)
     # C-D
-    adj[2, 3] = ENDPOINT_TAIL
-    adj[3, 2] = ENDPOINT_TAIL
+    adj[2, 3] = Endpoint.TAIL.value
+    adj[3, 2] = Endpoint.TAIL.value
     # D-E
-    adj[3, 4] = ENDPOINT_TAIL
-    adj[4, 3] = ENDPOINT_TAIL
+    adj[3, 4] = Endpoint.TAIL.value
+    adj[4, 3] = Endpoint.TAIL.value
     # E-C
-    adj[4, 2] = ENDPOINT_TAIL
-    adj[2, 4] = ENDPOINT_TAIL
+    adj[4, 2] = Endpoint.TAIL.value
+    adj[2, 4] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
@@ -204,8 +203,8 @@ def test_single_undirected_edge() -> None:
     scientist = ActiveScientist()
     labels = ["A", "B"]
     adj = np.zeros((2, 2))
-    adj[0, 1] = ENDPOINT_TAIL
-    adj[1, 0] = ENDPOINT_TAIL
+    adj[0, 1] = Endpoint.TAIL.value
+    adj[1, 0] = Endpoint.TAIL.value
 
     scientist.cpdag = adj
     scientist.labels = labels
