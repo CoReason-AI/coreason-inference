@@ -2,9 +2,8 @@
 # Licensed under the Prosperity Public License 3.0.0
 
 import numpy as np
-import pytest
+
 from coreason_inference.analysis.active_scientist import ENDPOINT_TAIL, ActiveScientist
-from coreason_inference.schema import ExperimentProposal
 
 
 def test_max_degree_heuristic_star_graph() -> None:
@@ -50,7 +49,7 @@ def test_max_degree_heuristic_star_graph() -> None:
     # Assert Rationale content
     # Should mention degree or heuristic
     assert "degree" in proposal.rationale.lower() or "heuristic" in proposal.rationale.lower()
-    assert "4" in proposal.rationale # The degree count
+    assert "4" in proposal.rationale  # The degree count
 
 
 def test_max_degree_heuristic_chain_graph() -> None:
