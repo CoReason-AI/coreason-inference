@@ -127,7 +127,7 @@ def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> N
     # OR better, update the code to use Degree as tie-breaker.
 
     assert proposal.target in ["A", "B", "C"]
-    assert "Simulating intervention" in proposal.rationale
+    assert "Max-Degree Heuristic" in proposal.rationale
 
 
 def test_empty_data_error() -> None:
@@ -215,7 +215,8 @@ def test_star_graph_heuristic() -> None:
 
     # Check rationale for gain count
     # Gain should be 4 (baseline 0, result 4)
-    assert "Gain: +4" in proposals[0].rationale
+    # New logic rationale: "It has the highest number of incident undirected edges (4)"
+    assert "undirected edges (4)" in proposals[0].rationale
 
 
 def test_propagation_gain() -> None:
