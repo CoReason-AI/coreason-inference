@@ -9,9 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class LoopType(str, Enum):
-    """
-    Enumeration of feedback loop types.
-    """
+    """Enumeration of feedback loop types."""
 
     POSITIVE_FEEDBACK = "POSITIVE"  # Runaway (Cancer/Cytokine Storm)
     NEGATIVE_FEEDBACK = "NEGATIVE"  # Homeostasis
@@ -19,17 +17,14 @@ class LoopType(str, Enum):
 
 
 class RefutationStatus(str, Enum):
-    """
-    Status of the placebo refutation test.
-    """
+    """Status of the placebo refutation test."""
 
     PASSED = "PASSED"
     FAILED = "FAILED"
 
 
 class LoopDynamics(BaseModel):
-    """
-    Represents a feedback loop within the causal graph.
+    """Represents a feedback loop within the causal graph.
 
     Attributes:
         path: List of node IDs forming the loop path (e.g., ["A", "B", "A"]).
@@ -41,8 +36,7 @@ class LoopDynamics(BaseModel):
 
 
 class CausalNode(BaseModel):
-    """
-    Represents a node in the causal graph.
+    """Represents a node in the causal graph.
 
     Attributes:
         id: Unique identifier for the node (e.g., variable name).
@@ -56,8 +50,7 @@ class CausalNode(BaseModel):
 
 
 class CausalGraph(BaseModel):
-    """
-    The discovered Causal Graph, potentially containing cycles (DCG).
+    """The discovered Causal Graph, potentially containing cycles (DCG).
 
     Attributes:
         nodes: List of nodes in the graph.
@@ -73,19 +66,18 @@ class CausalGraph(BaseModel):
 
     @model_validator(mode="after")
     def validate_graph_structure(self) -> "CausalGraph":
-        """
-        Validates the integrity of the graph structure.
+        """Validates the integrity of the graph structure.
 
         Checks:
         1. All edges refer to existing nodes.
         2. Node IDs are unique.
         3. Loop dynamics paths correspond to actual edges.
 
-        Raises:
-            ValueError: If validation fails.
-
         Returns:
             CausalGraph: The validated model.
+
+        Raises:
+            ValueError: If validation fails (duplicate nodes, invalid edges, etc.).
         """
         # 1. Check for duplicate node IDs
         node_ids: Set[str] = set()
@@ -116,8 +108,7 @@ class CausalGraph(BaseModel):
         return self
 
     def to_networkx(self) -> nx.DiGraph:
-        """
-        Converts the CausalGraph to a NetworkX DiGraph.
+        """Converts the CausalGraph to a NetworkX DiGraph.
 
         Returns:
             nx.DiGraph: A NetworkX directed graph representation with node attributes.
@@ -132,8 +123,7 @@ class CausalGraph(BaseModel):
 
 
 class InterventionResult(BaseModel):
-    """
-    The result of a causal intervention estimation.
+    """The result of a causal intervention estimation.
 
     Attributes:
         patient_id: Identifier of the patient (or 'POPULATION_ATE' / 'ERROR').
@@ -157,8 +147,7 @@ class InterventionResult(BaseModel):
 
 
 class ExperimentProposal(BaseModel):
-    """
-    A proposed physical experiment to resolve causal ambiguity.
+    """A proposed physical experiment to resolve causal ambiguity.
 
     Attributes:
         target: The target variable to intervene on (e.g., 'Gene_A').
@@ -174,8 +163,7 @@ class ExperimentProposal(BaseModel):
 
 
 class ProtocolRule(BaseModel):
-    """
-    A clinical protocol rule for patient selection.
+    """A clinical protocol rule for patient selection.
 
     Attributes:
         feature: The feature name (e.g., 'Albumin').
@@ -191,8 +179,7 @@ class ProtocolRule(BaseModel):
 
 
 class OptimizationOutput(BaseModel):
-    """
-    Output of the Rule Inductor optimization process.
+    """Output of the Rule Inductor optimization process.
 
     Attributes:
         new_criteria: List of optimized inclusion/exclusion rules.
@@ -208,8 +195,7 @@ class OptimizationOutput(BaseModel):
 
 
 class VirtualTrialResult(BaseModel):
-    """
-    Results of a simulated Virtual Phase 3 Trial.
+    """Results of a simulated Virtual Phase 3 Trial.
 
     Attributes:
         cohort_size: Size of the synthetic cohort after filtering by rules.

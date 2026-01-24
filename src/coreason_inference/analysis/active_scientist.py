@@ -21,8 +21,7 @@ from coreason_inference.utils.logger import logger
 
 
 class ActiveScientist:
-    """
-    The Active Scientist: Resolves causal ambiguity.
+    """The Active Scientist: Resolves causal ambiguity.
 
     Identifies the Markov Equivalence Class (all valid graphs fitting the data)
     and proposes physical experiments (Interventions) to resolve directionality
@@ -32,13 +31,14 @@ class ActiveScientist:
     """
 
     def __init__(self) -> None:
+        """Initializes the Active Scientist."""
         self.cpdag: np.ndarray[Any, Any] | None = None
         self.graph: nx.Graph | None = None
         self.labels: List[str] = []
 
     def fit(self, data: pd.DataFrame) -> None:
-        """
-        Discovers the Markov Equivalence Class (CPDAG) from observational data.
+        """Discovers the Markov Equivalence Class (CPDAG) from observational data.
+
         Uses the PC (Peter-Clark) algorithm.
 
         Args:
@@ -46,6 +46,7 @@ class ActiveScientist:
 
         Raises:
             ValueError: If input data is empty.
+            Exception: If the PC algorithm execution fails.
         """
         if data.empty:
             raise ValueError("Input data is empty.")
@@ -66,13 +67,10 @@ class ActiveScientist:
         self.cpdag = cg.G.graph
 
     def propose_experiments(self) -> List[ExperimentProposal]:
-        """
-        Identifies undirected edges in the CPDAG and proposes the BEST experiment
-        to resolve directionality using the Max-Degree Heuristic.
+        """Identifies undirected edges and proposes the BEST experiment.
 
-        This heuristic selects the node with the highest number of incident undirected
-        edges (Degree), approximating high information gain by targeting central
-        uncertainty nodes (Hubs).
+        Uses the Max-Degree Heuristic to select the node with the highest number
+        of incident undirected edges (Degree), approximating high information gain.
 
         Returns:
             List[ExperimentProposal]: A list containing the optimal experiment(s).
