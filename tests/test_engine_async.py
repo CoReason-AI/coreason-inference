@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
@@ -128,7 +128,7 @@ async def test_error_handling_in_async_analyze() -> None:
     data = pd.DataFrame({"time": [0, 1], "A": [1, 2]})
 
     # 1. Analyze Estimation Error
-    # To hit line 193 (logger.error(f"Estimation failed during pipeline: {e}"))
+    # To hit line 202 (logger.error(f"Estimation failed during pipeline: {e}"))
     # We mock dynamics/latent/active to pass quickly
     engine.dynamics_engine = MagicMock()
     engine.dynamics_engine.discover_loops.return_value = CausalGraph(
@@ -149,6 +149,32 @@ async def test_error_handling_in_async_analyze() -> None:
 
     with patch("coreason_inference.engine.CausalEstimator", side_effect=BrokenEstimator):
         # This should catch exception and log error, not raise
+        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+
+
+@pytest.mark.asyncio
+async def test_analyze_missing_estimator() -> None:
+    """Test coverage for line 193: raise ValueError('Estimator not initialized')."""
+    engine = InferenceEngineAsync()
+    engine.dynamics_engine = MagicMock()
+    engine.dynamics_engine.discover_loops.return_value = CausalGraph(
+        nodes=[], edges=[], loop_dynamics=[], stability_score=0
+    )
+    engine.latent_miner = MagicMock()
+    engine.latent_miner.discover_latents.return_value = pd.DataFrame()
+    engine.active_scientist = MagicMock()
+
+    data = pd.DataFrame({"time": [0, 1], "A": [1, 2]})
+
+    # We mock _estimator property to return None
+    # Since _estimator is a property, we patch it on the class or instance.
+    # Note: engine.analyze sets self.estimator = self._estimator.
+    # If self._estimator returns None, self.estimator is None.
+    # But self._estimator type hint says CausalEstimator. We force it for test.
+    with patch.object(InferenceEngineAsync, "_estimator", new_callable=PropertyMock) as mock_prop:
+        mock_prop.return_value = None
+
+        # Should log error about "Estimator not initialized"
         await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
 
 
@@ -200,13 +226,3 @@ def test_sync_facade_setters() -> None:
     engine.latents = None
     engine.augmented_data = None
     engine.cate_estimates = None
-
-    # Mypy error: Cannot assign to a method [method-assign]
-    # engine.virtual_simulator.generate_synthetic_cohort is a method, not a property
-    # But in test_error_handling_in_virtual_trial, we assign to engine.virtual_simulator.generate_synthetic_cohort
-    # The error "Cannot assign to a method" likely comes from lines like:
-    # engine.virtual_simulator.generate_synthetic_cohort = MagicMock(...)
-    # Because Mypy sees it as a method on the VirtualSimulator type.
-    # We should use unittest.mock.patch.object or ignore mypy here since it's a test.
-    # But for facade setters test, we are just assigning to properties of engine, which is fine.
-    # The error was in test_error_handling_in_virtual_trial.
