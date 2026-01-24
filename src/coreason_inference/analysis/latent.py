@@ -40,7 +40,7 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Encode
         h_enc = self.activation(self.encoder_hidden(x))
         mu = self.mu_layer(h_enc)
@@ -53,7 +53,8 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         h_dec = self.activation(self.decoder_hidden(z))
         x_hat = self.decoder_output(h_dec)
 
-        return x_hat, mu, logvar
+        # Return z as well for FactorVAE
+        return x_hat, mu, logvar, z
 
     def encode_mu(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -71,6 +72,42 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         return cast(torch.Tensor, x_hat)
 
 
+class Discriminator(nn.Module):  # type: ignore[misc]
+    """
+    Discriminator network for FactorVAE.
+    Distinguishes between samples from the aggregate posterior q(z)
+    and the product of marginals prod(q(z_j)).
+    """
+
+    def __init__(self, latent_dim: int, hidden_dim: int = 32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(hidden_dim, 2),  # Logits for 2 classes: Permuted(0) vs Real(1)
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return cast(torch.Tensor, self.net(z))
+
+
+def permute_dims(z: torch.Tensor) -> torch.Tensor:
+    """
+    Permutes each dimension of the latent batch independently to approximate
+    the product of marginals q(z_1) * ... * q(z_d).
+    """
+    assert z.dim() == 2
+    B, D = z.size()
+    perm_z = torch.zeros_like(z)
+    # Shuffle each dimension independently
+    for d in range(D):
+        idx = torch.randperm(B)
+        perm_z[:, d] = z[idx, d]
+    return perm_z
+
+
 class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
     """
     Helper wrapper for SHAP explanation to isolate the encoder mean.
@@ -86,23 +123,26 @@ class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
 
 class LatentMiner:
     """
-    Discovers latent confounders using a Beta-VAE.
+    Discovers latent confounders using a FactorVAE (with Independence Constraints).
     """
 
     def __init__(
         self,
         latent_dim: int = 5,
-        beta: float = 4.0,
+        beta: float = 1.0,  # Standard VAE weight
+        gamma: float = 6.0,  # Total Correlation weight (FactorVAE)
         learning_rate: float = 1e-3,
         epochs: int = 1000,
         batch_size: int = 64,
     ):
         self.latent_dim = latent_dim
         self.beta = beta
+        self.gamma = gamma
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.batch_size = batch_size
         self.model: Optional[CausalVAE] = None
+        self.discriminator: Optional[Discriminator] = None
         self.scaler = StandardScaler()
         self.input_dim: int = 0
         self.feature_names: List[str] = []
@@ -131,39 +171,87 @@ class LatentMiner:
     def fit(self, data: pd.DataFrame) -> None:
         X_tensor = self._preprocess(data, fit_scaler=True)
 
-        # Initialize Model
+        # Initialize Models
         self.model = CausalVAE(self.input_dim, latent_dim=self.latent_dim).to(self.device)
-        optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.discriminator = Discriminator(self.latent_dim, hidden_dim=32).to(self.device)
+
+        # Optimizers
+        vae_optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        disc_optimizer = optim.Adam(self.discriminator.parameters(), lr=self.learning_rate)
 
         logger.info(
-            f"Training LatentMiner (Beta-VAE) with input_dim={self.input_dim}, "
-            f"latent_dim={self.latent_dim}, beta={self.beta} on {self.device}"
+            f"Training LatentMiner (FactorVAE) with input_dim={self.input_dim}, "
+            f"latent_dim={self.latent_dim}, beta={self.beta}, gamma={self.gamma} on {self.device}"
         )
+
+        criterion = nn.CrossEntropyLoss()
+
+        # Targets for Discriminator
+        # Real (1) for samples from q(z)
+        # Fake (0) for samples from prod q(z_j)
+        # Note: We create them dynamically in loop to match batch size if we were doing batching,
+        # but here we use full batch X_tensor.
+        B = X_tensor.size(0)
+        ones = torch.ones(B, dtype=torch.long, device=self.device)
+        zeros = torch.zeros(B, dtype=torch.long, device=self.device)
 
         # Training Loop
         self.model.train()
-        for epoch in range(self.epochs):
-            # Full batch gradient descent for simplicity in this atomic unit
-            optimizer.zero_grad()
-            x_hat, mu, logvar = self.model(X_tensor)
+        self.discriminator.train()
 
-            # Loss Calculation
+        for epoch in range(self.epochs):
+            # 1. Forward Pass VAE
+            vae_optimizer.zero_grad()
+            disc_optimizer.zero_grad()
+
+            x_hat, mu, logvar, z = self.model(X_tensor)
+
+            # 2. Train Discriminator
+            # We want D to distinguish z (Real) from z_perm (Fake)
+            # D needs to be updated based on detached z so we don't backprop into VAE yet
+            z_detached = z.detach()
+            z_perm = permute_dims(z_detached)
+
+            d_real_logits = self.discriminator(z_detached)
+            d_fake_logits = self.discriminator(z_perm)
+
+            # Discriminator Loss: Maximize log(D(z)) + log(1 - D(z_perm))
+            # Equivalent to minimizing CrossEntropy(D(z), 1) + CrossEntropy(D(z_perm), 0)
+            disc_loss = criterion(d_real_logits, ones) + criterion(d_fake_logits, zeros)
+
+            disc_loss.backward()
+            disc_optimizer.step()
+
+            # 3. Train VAE
+            # We re-evaluate D(z) to get gradients for VAE (via Reparameterization Trick)
+            # The Discriminator is fixed for this step.
+
             # Reconstruction Loss (MSE)
             recon_loss = nn.functional.mse_loss(x_hat, X_tensor, reduction="sum")
 
             # KL Divergence Loss
-            # -0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
             kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-            # Total Loss
-            loss = recon_loss + self.beta * kld_loss
+            # Total Correlation Loss (from Discriminator)
+            # TC(z) approx E[log(D(z)/(1-D(z)))]
+            # If D outputs logits, log(p/(1-p)) is simply (logit_1 - logit_0)
+            d_logits = self.discriminator(z)
+            tc_loss = (d_logits[:, 1] - d_logits[:, 0]).sum()
+            # Note: reduction='sum' for consistency with recon/kld which are sum over batch.
+            # Usually TC is weighted.
 
-            loss.backward()
+            # Total VAE Loss
+            vae_loss = recon_loss + self.beta * kld_loss + self.gamma * tc_loss
 
-            optimizer.step()
+            vae_loss.backward()
+            vae_optimizer.step()
 
             if epoch % 100 == 0:
-                logger.debug(f"Epoch {epoch}: Loss={loss.item()} (Recon={recon_loss.item()}, KLD={kld_loss.item()})")
+                logger.debug(
+                    f"Epoch {epoch}: VAE Loss={vae_loss.item():.2f} "
+                    f"(Recon={recon_loss.item():.2f}, KLD={kld_loss.item():.2f}, TC={tc_loss.item():.2f}), "
+                    f"Disc Loss={disc_loss.item():.2f}"
+                )
 
         logger.info("LatentMiner training complete.")
 
@@ -210,7 +298,7 @@ class LatentMiner:
         # Inference
         self.model.eval()
         with torch.no_grad():
-            _, mu, _ = self.model(X_tensor)
+            _, mu, _, _ = self.model(X_tensor)
 
         # Convert to DataFrame
         latent_cols = [f"Z_{i}" for i in range(self.latent_dim)]
