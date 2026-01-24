@@ -3,11 +3,12 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from coreason_inference.engine import InferenceEngineAsync, InferenceResult
+from coreason_inference.engine import InferenceEngine, InferenceEngineAsync, InferenceResult
 from coreason_inference.schema import (
     CausalGraph,
     CausalNode,
     InterventionResult,
+    OptimizationOutput,
     RefutationStatus,
 )
 
@@ -118,3 +119,89 @@ async def test_analyze_pipeline_mocked() -> None:
 
         # Verify estimator call
         instance.estimate_effect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_error_handling_in_async_analyze() -> None:
+    """Test error handling blocks in analyze and run_virtual_trial."""
+    engine = InferenceEngineAsync()
+    data = pd.DataFrame({"time": [0, 1], "A": [1, 2]})
+
+    # 1. Analyze Estimation Error
+    # To hit line 193 (logger.error(f"Estimation failed during pipeline: {e}"))
+    # We mock dynamics/latent/active to pass quickly
+    engine.dynamics_engine = MagicMock()
+    engine.dynamics_engine.discover_loops.return_value = CausalGraph(
+        nodes=[], edges=[], loop_dynamics=[], stability_score=0
+    )
+    engine.latent_miner = MagicMock()
+    engine.latent_miner.discover_latents.return_value = pd.DataFrame()
+    engine.active_scientist = MagicMock()
+
+    # We need to simulate estimator failure
+    with patch("coreason_inference.engine.CausalEstimator") as MockEstimator:
+        instance = MockEstimator.return_value
+        instance.estimate_effect.side_effect = Exception("Boom")
+
+        # This should catch exception and log error, not raise
+        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+
+
+@pytest.mark.asyncio
+async def test_error_handling_in_virtual_trial() -> None:
+    """Test error handling in run_virtual_trial."""
+    engine = InferenceEngineAsync()
+    engine.latent_miner.model = MagicMock()
+    engine.graph = MagicMock()
+
+    # To hit line 546 (logger.error(f"Virtual trial simulation failed: {e}"))
+    # Use patch.object to avoid Mypy "Cannot assign to a method" errors
+    with (
+        patch.object(engine.virtual_simulator, "generate_synthetic_cohort", return_value=pd.DataFrame({"A": [1]})),
+        patch.object(engine.virtual_simulator, "scan_safety", return_value=[]),
+        patch.object(engine.virtual_simulator, "simulate_trial", side_effect=Exception("Sim Boom")),
+    ):
+        result = await engine.run_virtual_trial(
+            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0), "T", "Y", []
+        )
+
+        assert result.simulation_result is None
+        assert result.cohort_size == 1
+
+
+def test_sync_facade_setters() -> None:
+    """Test setters in Sync Facade to cover lines 459, 462, 470, 486, 514, 518."""
+    engine = InferenceEngine()
+
+    # 459: dynamics_engine setter
+    engine.dynamics_engine = MagicMock()
+    # 462: latent_miner setter (missed?)
+    # 470: active_scientist setter (missed?)
+    # 486: augmented_data setter (missed?)
+    # 514: _last_analysis_meta setter
+    engine._last_analysis_meta = {"key": "value"}
+    assert engine._last_analysis_meta == {"key": "value"}
+
+    # 518: _latent_features setter
+    engine._latent_features = ["F1"]
+    assert engine._latent_features == ["F1"]
+
+    # Cover others explicitly just in case
+    engine.latent_miner = MagicMock()
+    engine.active_scientist = MagicMock()
+    engine.virtual_simulator = MagicMock()
+    engine.rule_inductor = MagicMock()
+    engine.graph = None
+    engine.latents = None
+    engine.augmented_data = None
+    engine.cate_estimates = None
+
+    # Mypy error: Cannot assign to a method [method-assign]
+    # engine.virtual_simulator.generate_synthetic_cohort is a method, not a property
+    # But in test_error_handling_in_virtual_trial, we assign to engine.virtual_simulator.generate_synthetic_cohort
+    # The error "Cannot assign to a method" likely comes from lines like:
+    # engine.virtual_simulator.generate_synthetic_cohort = MagicMock(...)
+    # Because Mypy sees it as a method on the VirtualSimulator type.
+    # We should use unittest.mock.patch.object or ignore mypy here since it's a test.
+    # But for facade setters test, we are just assigning to properties of engine, which is fine.
+    # The error was in test_error_handling_in_virtual_trial.
