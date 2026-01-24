@@ -90,7 +90,18 @@ class TestEngineExplainability:
         # Check args passed to interpret_latents
         call_args = mock_interpret.call_args
         passed_df = call_args[0][0]
-        passed_samples = call_args[1].get("samples")
+
+        # When called via anyio.run / run_sync, keyword arguments might be passed as positional
+        # if the wrapper converts them. Or strictly, if we call run_sync(func, arg1, arg2),
+        # they arrive as positional args.
+        # In engine.py: await anyio.to_thread.run_sync(
+        #     self.latent_miner.interpret_latents, explanation_data, background_samples
+        # )
+        # So 'background_samples' is the second positional argument (index 1).
+        if len(call_args[0]) > 1:
+            passed_samples = call_args[0][1]
+        else:
+            passed_samples = call_args[1].get("samples")
 
         # passed_df should only contain "feature_1" and "feature_2", not "time" or "Z_*"
         assert list(passed_df.columns) == ["feature_1", "feature_2"]
