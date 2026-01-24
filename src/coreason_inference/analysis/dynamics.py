@@ -47,7 +47,14 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
 
     def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
-        dy/dt = MLP(y) * W
+        Calculates the derivative dy/dt.
+
+        Args:
+            t: Current time.
+            y: Current state.
+
+        Returns:
+            torch.Tensor: The derivative dy/dt.
         """
         # Element-wise multiplication to enforce the dependency structure
         # Note: The prompt implementation `torch.matmul(dynamics, self.W)` multiplies (batch, dim) x (dim, dim)
@@ -58,7 +65,11 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
 
 class DynamicsEngine:
     """
-    The Dynamics Engine uses Neural ODEs to model system dynamics and discover feedback loops.
+    The Dynamics Engine: Cyclic Discovery & System Dynamics.
+
+    Uses Neural Ordinary Differential Equations (Neural ODEs) to model biological
+    systems and discover feedback loops (cycles). Implements NOTEARS-based
+    structural learning constraints adapted for cyclic graphs.
     """
 
     def __init__(
@@ -70,6 +81,20 @@ class DynamicsEngine:
         jacobian_lambda: float = 0.0,
         acyclicity_lambda: float = 0.0,
     ):
+        """
+        Initializes the Dynamics Engine.
+
+        Args:
+            learning_rate: Learning rate for the optimizer.
+            epochs: Number of training epochs.
+            method: Integration method for the ODE solver (e.g., 'dopri5').
+            l1_lambda: Regularization strength for L1 sparsity (Graph Sparsity).
+            jacobian_lambda: Regularization strength for Jacobian stability.
+            acyclicity_lambda: Regularization strength for NOTEARS acyclicity (if DAG desired).
+
+        Raises:
+            ValueError: If lambda parameters are negative.
+        """
         if l1_lambda < 0:
             raise ValueError("l1_lambda must be non-negative.")
         if jacobian_lambda < 0:
@@ -102,12 +127,15 @@ class DynamicsEngine:
 
     def fit(self, data: pd.DataFrame, time_col: str, variable_cols: List[str]) -> None:
         """
-        Fits a Neural ODE to the time-series data.
+        Fits a Neural ODE to the time-series data to learn system dynamics.
 
         Args:
             data: DataFrame containing time-series data.
             time_col: Name of the column representing time.
             variable_cols: List of column names representing the variables (nodes).
+
+        Raises:
+            ValueError: If data is empty, contains NaNs, or has insufficient points.
         """
         if data.empty:
             raise ValueError("Input data is empty.")
@@ -207,11 +235,17 @@ class DynamicsEngine:
         """
         Analyzes the learned dynamics to discover feedback loops.
 
+        Extracts the interaction matrix (W) from the trained Neural ODE and
+        identifies cycles (Positive/Negative feedback) and their stability.
+
         Args:
             threshold: Minimum weight magnitude to consider an edge exists.
 
         Returns:
-            CausalGraph: The discovered graph structure with loops.
+            CausalGraph: The discovered graph structure with loops and stability scores.
+
+        Raises:
+            ValueError: If the model has not been fitted yet.
         """
         if self.model is None:
             raise ValueError("Model has not been fitted yet.")

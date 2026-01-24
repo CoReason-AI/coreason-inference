@@ -27,8 +27,11 @@ OPERATOR_MAP: Dict[str, Callable[[Any, Any], Any]] = {
 
 class VirtualSimulator:
     """
-    "Re-runs" Phase 2 trials in silico with new inclusion/exclusion criteria.
-    Generates synthetic cohorts ('Digital Twins') and simulates outcomes.
+    The Virtual Simulator: Safety & Efficacy.
+
+    "Re-runs" Phase 2 trials in silico by generating synthetic cohorts ("Digital Twins")
+    that match specific inclusion/exclusion criteria.
+    Scans for safety risks by traversing toxicity pathways in the Causal Graph.
     """
 
     def __init__(self) -> None:
@@ -43,6 +46,9 @@ class VirtualSimulator:
     ) -> pd.DataFrame:
         """
         Generates a synthetic cohort with Adaptive Sampling to ensure retention.
+
+        Uses the Latent Miner to sample "Digital Twins" from the latent space
+        and filters them according to the provided Protocol Rules.
 
         Args:
             miner: Fitted LatentMiner instance.
@@ -104,6 +110,9 @@ class VirtualSimulator:
         """
         Scans the causal graph for pathways leading from the treatment to adverse outcomes.
 
+        Propagates the effect of the treatment node through the graph to check
+        if it reaches any defined adverse outcome nodes (e.g., "Renal_Failure").
+
         Args:
             graph: The discovered CausalGraph.
             treatment: The treatment variable node ID.
@@ -160,6 +169,9 @@ class VirtualSimulator:
 
         Returns:
             InterventionResult: The estimated effect.
+
+        Raises:
+            ValueError: If cohort is empty or columns are missing.
         """
         if cohort.empty:
             raise ValueError("Cannot simulate trial on empty cohort.")

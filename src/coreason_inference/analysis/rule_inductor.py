@@ -20,15 +20,21 @@ from coreason_inference.utils.logger import logger
 
 class RuleInductor:
     """
-    Translates CATE scores into human-readable Clinical Protocols using Decision Trees.
-    Optimizes Phase 3 Probability of Success (PoS) by identifying Super-Responders.
+    The Rule Inductor: TPP Optimization.
+
+    Translates complex CATE scores into human-readable Clinical Protocols (Rules)
+    using interpretable Decision Trees. Optimizes Phase 3 Probability of Success (PoS)
+    by identifying Super-Responders (Target Patient Profiles) that maximize the
+    Mean CATE.
     """
 
     def __init__(self, max_depth: int = 3, min_samples_leaf: int = 20):
         """
+        Initializes the Rule Inductor.
+
         Args:
-            max_depth: Maximum depth of the decision tree (interpretable rules).
-            min_samples_leaf: Minimum samples in a leaf to consider it a valid subgroup.
+            max_depth: Maximum depth of the decision tree. Controls rule complexity.
+            min_samples_leaf: Minimum samples in a leaf. Prevents overfitting to tiny subgroups.
         """
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
@@ -37,11 +43,14 @@ class RuleInductor:
 
     def fit(self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray[Any, Any]) -> None:
         """
-        Fits a Decision Tree Regressor to predict CATE scores from features.
+        Fits a Decision Tree Regressor to predict CATE scores from patient features.
 
         Args:
             features: DataFrame of patient features (Covariates).
             cate_scores: Estimated Individual Treatment Effects (CATE).
+
+        Raises:
+            ValueError: If inputs are empty or lengths do not match.
         """
         if features.empty or len(cate_scores) == 0:
             raise ValueError("Input features or CATE scores are empty.")
@@ -120,6 +129,13 @@ class RuleInductor:
     def induce_rules(self, cate_scores: pd.Series | np.ndarray[Any, Any]) -> OptimizationOutput:
         """
         Extracts optimized inclusion criteria from the fitted tree using internal tree statistics (Mean CATE).
+        Selects the leaf node with the highest predicted CATE.
+
+        Args:
+            cate_scores: The original CATE scores used for training (used for baseline comparison).
+
+        Returns:
+            OptimizationOutput: The optimized rules and PoS metrics.
         """
         if self.tree_model is None:
             raise ValueError("Model not fitted. Call fit() first.")
@@ -170,7 +186,15 @@ class RuleInductor:
         self, features: pd.DataFrame, cate_scores: pd.Series | np.ndarray[Any, Any]
     ) -> OptimizationOutput:
         """
-        Extracts optimized inclusion criteria calculating stats based on the provided data.
+        Extracts optimized inclusion criteria by calculating stats based on the provided data.
+        More accurate than `induce_rules` as it verifies population size and actual mean in the sample.
+
+        Args:
+            features: Patient features.
+            cate_scores: Corresponding CATE scores.
+
+        Returns:
+            OptimizationOutput: Optimized rules and PoS metrics.
         """
         if self.tree_model is None:
             raise ValueError("Model not fitted.")

@@ -22,8 +22,13 @@ from coreason_inference.utils.logger import logger
 
 class ActiveScientist:
     """
-    Identifies causal ambiguity (Markov Equivalence Classes) and proposes experiments
-    to resolve them.
+    The Active Scientist: Resolves causal ambiguity.
+
+    Identifies the Markov Equivalence Class (all valid graphs fitting the data)
+    and proposes physical experiments (Interventions) to resolve directionality
+    where the data is ambiguous.
+
+    Implements the Max-Degree Heuristic to approximate Information Gain.
     """
 
     def __init__(self) -> None:
@@ -33,10 +38,14 @@ class ActiveScientist:
 
     def fit(self, data: pd.DataFrame) -> None:
         """
-        Discovers the Markov Equivalence Class (CPDAG) from observational data using the PC algorithm.
+        Discovers the Markov Equivalence Class (CPDAG) from observational data.
+        Uses the PC (Peter-Clark) algorithm.
 
         Args:
             data: DataFrame containing observational data.
+
+        Raises:
+            ValueError: If input data is empty.
         """
         if data.empty:
             raise ValueError("Input data is empty.")
@@ -67,6 +76,9 @@ class ActiveScientist:
 
         Returns:
             List[ExperimentProposal]: A list containing the optimal experiment(s).
+
+        Raises:
+            ValueError: If the model has not been fitted via `fit()`.
         """
         if self.cpdag is None:
             raise ValueError("Model not fitted. Call fit() first.")

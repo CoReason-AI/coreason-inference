@@ -22,6 +22,10 @@ from coreason_inference.utils.logger import logger
 
 
 class CausalVAE(nn.Module):  # type: ignore[misc]
+    """
+    Causal Variational Autoencoder network.
+    """
+
     def __init__(self, input_dim: int, hidden_dim: int = 32, latent_dim: int = 5):
         super().__init__()
         # Encoder
@@ -123,7 +127,11 @@ class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
 
 class LatentMiner:
     """
-    Discovers latent confounders using a FactorVAE (with Independence Constraints).
+    The Latent Miner: Representation Learning & Disentanglement.
+
+    Uses a FactorVAE (Causal VAE with Total Correlation penalty) to discover
+    independent latent factors (Z) that explain the variance in the observed data.
+    Enables generation of "Digital Twins" by sampling from the latent space.
     """
 
     def __init__(
@@ -135,6 +143,15 @@ class LatentMiner:
         epochs: int = 1000,
         batch_size: int = 64,
     ):
+        """
+        Args:
+            latent_dim: Dimension of the latent space (number of factors).
+            beta: Weight for KLD term (standard VAE).
+            gamma: Weight for Total Correlation term (FactorVAE).
+            learning_rate: Learning rate for optimizer.
+            epochs: Number of training epochs.
+            batch_size: Batch size for training.
+        """
         self.latent_dim = latent_dim
         self.beta = beta
         self.gamma = gamma
@@ -169,6 +186,15 @@ class LatentMiner:
         return torch.tensor(X_scaled, dtype=torch.float32, device=self.device)
 
     def fit(self, data: pd.DataFrame) -> None:
+        """
+        Fits the FactorVAE to the data to learn latent representations.
+
+        Args:
+            data: Input dataframe.
+
+        Raises:
+            ValueError: If data is empty or invalid.
+        """
         X_tensor = self._preprocess(data, fit_scaler=True)
 
         # Initialize Models
@@ -288,7 +314,12 @@ class LatentMiner:
     def discover_latents(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Maps input data to the latent space (Z).
-        Returns a DataFrame of latent variables.
+
+        Args:
+            data: Input dataframe matching training features.
+
+        Returns:
+            pd.DataFrame: A DataFrame of latent variables (Z_0, Z_1, ...).
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
