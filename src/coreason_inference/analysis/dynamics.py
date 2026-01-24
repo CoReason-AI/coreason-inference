@@ -1,4 +1,4 @@
-# Copyright (c) 2025 CoReason, Inc.
+# Copyright (c) 2026 CoReason, Inc.
 #
 # This software is proprietary and dual-licensed.
 # Licensed under the Prosperity Public License 3.0 (the "License").
@@ -24,12 +24,18 @@ from coreason_inference.utils.logger import logger
 
 
 class ODEFunc(nn.Module):  # type: ignore[misc]
-    """
-    UPGRADED: Non-Linear Neural ODE function.
+    """UPGRADED: Non-Linear Neural ODE function.
+
     Uses a Tanh activation to model complex, non-linear system dynamics.
     """
 
     def __init__(self, input_dim: int, hidden_dim: int = 64):
+        """Initializes the ODE function.
+
+        Args:
+            input_dim: Dimension of the input state.
+            hidden_dim: Dimension of the hidden layer.
+        """
         super().__init__()
         self.input_dim = input_dim
 
@@ -46,8 +52,7 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
         self.W = nn.Parameter(torch.randn(input_dim, input_dim) * 0.1)
 
     def forward(self, t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """
-        Calculates the derivative dy/dt.
+        """Calculates the derivative dy/dt.
 
         Args:
             t: Current time.
@@ -64,8 +69,7 @@ class ODEFunc(nn.Module):  # type: ignore[misc]
 
 
 class DynamicsEngine:
-    """
-    The Dynamics Engine: Cyclic Discovery & System Dynamics.
+    """The Dynamics Engine: Cyclic Discovery & System Dynamics.
 
     Uses Neural Ordinary Differential Equations (Neural ODEs) to model biological
     systems and discover feedback loops (cycles). Implements NOTEARS-based
@@ -81,8 +85,7 @@ class DynamicsEngine:
         jacobian_lambda: float = 0.0,
         acyclicity_lambda: float = 0.0,
     ):
-        """
-        Initializes the Dynamics Engine.
+        """Initializes the Dynamics Engine.
 
         Args:
             learning_rate: Learning rate for the optimizer.
@@ -113,9 +116,13 @@ class DynamicsEngine:
         self.scaler: Optional[StandardScaler] = None
 
     def _compute_acyclicity_constraint(self, W: torch.Tensor) -> torch.Tensor:
-        """
-        Computes the NOTEARS acyclicity constraint h(W) = tr(e^(W*W)) - d.
-        Where W*W is the element-wise square (Hadamard product) to ensure non-negativity.
+        """Computes the NOTEARS acyclicity constraint h(W) = tr(e^(W*W)) - d.
+
+        Args:
+            W: The weighted adjacency matrix.
+
+        Returns:
+            torch.Tensor: The acyclicity constraint value (h(W)).
         """
         d = W.shape[0]
         # Element-wise square to ensure non-negativity (adjacency strength)
@@ -126,8 +133,7 @@ class DynamicsEngine:
         return h
 
     def fit(self, data: pd.DataFrame, time_col: str, variable_cols: List[str]) -> None:
-        """
-        Fits a Neural ODE to the time-series data to learn system dynamics.
+        """Fits a Neural ODE to the time-series data to learn system dynamics.
 
         Args:
             data: DataFrame containing time-series data.
@@ -232,8 +238,7 @@ class DynamicsEngine:
         logger.info(f"Training complete. Final Loss: {total_loss.item()}")
 
     def discover_loops(self, threshold: float = 0.1) -> CausalGraph:
-        """
-        Analyzes the learned dynamics to discover feedback loops.
+        """Analyzes the learned dynamics to discover feedback loops.
 
         Extracts the interaction matrix (W) from the trained Neural ODE and
         identifies cycles (Positive/Negative feedback) and their stability.

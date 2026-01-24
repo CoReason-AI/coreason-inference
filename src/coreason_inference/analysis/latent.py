@@ -22,11 +22,16 @@ from coreason_inference.utils.logger import logger
 
 
 class CausalVAE(nn.Module):  # type: ignore[misc]
-    """
-    Causal Variational Autoencoder network.
-    """
+    """Causal Variational Autoencoder network."""
 
     def __init__(self, input_dim: int, hidden_dim: int = 32, latent_dim: int = 5):
+        """Initializes the CausalVAE.
+
+        Args:
+            input_dim: Input dimension.
+            hidden_dim: Hidden dimension.
+            latent_dim: Latent dimension.
+        """
         super().__init__()
         # Encoder
         self.encoder_hidden = nn.Linear(input_dim, hidden_dim)
@@ -40,11 +45,29 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         self.activation = nn.ReLU()
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        """Reparameterization trick to sample from N(mu, var).
+
+        Args:
+            mu: Mean of the latent Gaussian.
+            logvar: Log variance of the latent Gaussian.
+
+        Returns:
+            torch.Tensor: Sampled latent vector.
+        """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Forward pass through the VAE.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                (Reconstructed input, Mean, Log Variance, Latent Vector)
+        """
         # Encode
         h_enc = self.activation(self.encoder_hidden(x))
         mu = self.mu_layer(h_enc)
@@ -61,15 +84,25 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
         return x_hat, mu, logvar, z
 
     def encode_mu(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Helper method for SHAP explanation. Returns only the mean of the latent distribution.
+        """Helper method for SHAP explanation. Returns only the mean of the latent distribution.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            torch.Tensor: Mean of the latent distribution.
         """
         h_enc = self.activation(self.encoder_hidden(x))
         return cast(torch.Tensor, self.mu_layer(h_enc))
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        Decodes latent vectors z back to the input space x_hat.
+        """Decodes latent vectors z back to the input space x_hat.
+
+        Args:
+            z: Latent tensor.
+
+        Returns:
+            torch.Tensor: Reconstructed input.
         """
         h_dec = self.activation(self.decoder_hidden(z))
         x_hat = self.decoder_output(h_dec)
@@ -77,13 +110,19 @@ class CausalVAE(nn.Module):  # type: ignore[misc]
 
 
 class Discriminator(nn.Module):  # type: ignore[misc]
-    """
-    Discriminator network for FactorVAE.
+    """Discriminator network for FactorVAE.
+
     Distinguishes between samples from the aggregate posterior q(z)
     and the product of marginals prod(q(z_j)).
     """
 
     def __init__(self, latent_dim: int, hidden_dim: int = 32):
+        """Initializes the Discriminator.
+
+        Args:
+            latent_dim: Latent dimension.
+            hidden_dim: Hidden dimension.
+        """
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim),
@@ -94,13 +133,27 @@ class Discriminator(nn.Module):  # type: ignore[misc]
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            z: Latent vector.
+
+        Returns:
+            torch.Tensor: Logits.
+        """
         return cast(torch.Tensor, self.net(z))
 
 
 def permute_dims(z: torch.Tensor) -> torch.Tensor:
-    """
-    Permutes each dimension of the latent batch independently to approximate
-    the product of marginals q(z_1) * ... * q(z_d).
+    """Permutes each dimension of the latent batch independently.
+
+    Approximates the product of marginals q(z_1) * ... * q(z_d).
+
+    Args:
+        z: Latent batch tensor (Batch, Dim).
+
+    Returns:
+        torch.Tensor: Permuted latent batch.
     """
     assert z.dim() == 2
     B, D = z.size()
@@ -113,21 +166,31 @@ def permute_dims(z: torch.Tensor) -> torch.Tensor:
 
 
 class _ShapEncoderWrapper(nn.Module):  # type: ignore[misc]
-    """
-    Helper wrapper for SHAP explanation to isolate the encoder mean.
-    """
+    """Helper wrapper for SHAP explanation to isolate the encoder mean."""
 
     def __init__(self, model: CausalVAE):
+        """Initializes the wrapper.
+
+        Args:
+            model: The CausalVAE model.
+        """
         super().__init__()
         self.model = model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            torch.Tensor: Encoded mean.
+        """
         return self.model.encode_mu(x)
 
 
 class LatentMiner:
-    """
-    The Latent Miner: Representation Learning & Disentanglement.
+    """The Latent Miner: Representation Learning & Disentanglement.
 
     Uses a FactorVAE (Causal VAE with Total Correlation penalty) to discover
     independent latent factors (Z) that explain the variance in the observed data.
@@ -143,7 +206,8 @@ class LatentMiner:
         epochs: int = 1000,
         batch_size: int = 64,
     ):
-        """
+        """Initializes the Latent Miner.
+
         Args:
             latent_dim: Dimension of the latent space (number of factors).
             beta: Weight for KLD term (standard VAE).
@@ -166,8 +230,17 @@ class LatentMiner:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _preprocess(self, data: pd.DataFrame, fit_scaler: bool = False) -> torch.Tensor:
-        """
-        Validates, scales, and converts input data to a tensor on the correct device.
+        """Validates, scales, and converts input data to a tensor on the correct device.
+
+        Args:
+            data: Input dataframe.
+            fit_scaler: Whether to fit the scaler.
+
+        Returns:
+            torch.Tensor: Preprocessed data tensor.
+
+        Raises:
+            ValueError: If data is empty or contains NaNs/Infs.
         """
         if data.empty:
             raise ValueError("Input data is empty.")
@@ -186,8 +259,7 @@ class LatentMiner:
         return torch.tensor(X_scaled, dtype=torch.float32, device=self.device)
 
     def fit(self, data: pd.DataFrame) -> None:
-        """
-        Fits the FactorVAE to the data to learn latent representations.
+        """Fits the FactorVAE to the data to learn latent representations.
 
         Args:
             data: Input dataframe.
@@ -282,14 +354,16 @@ class LatentMiner:
         logger.info("LatentMiner training complete.")
 
     def generate(self, n_samples: int) -> pd.DataFrame:
-        """
-        Generates synthetic data ('Digital Twins') by sampling from the latent space.
+        """Generates synthetic data ('Digital Twins') by sampling from the latent space.
 
         Args:
             n_samples: Number of synthetic samples to generate.
 
         Returns:
             pd.DataFrame: Generated data in the original feature space.
+
+        Raises:
+            ValueError: If model is not trained.
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
@@ -312,14 +386,16 @@ class LatentMiner:
         return pd.DataFrame(x_hat, columns=self.feature_names)
 
     def discover_latents(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Maps input data to the latent space (Z).
+        """Maps input data to the latent space (Z).
 
         Args:
             data: Input dataframe matching training features.
 
         Returns:
             pd.DataFrame: A DataFrame of latent variables (Z_0, Z_1, ...).
+
+        Raises:
+            ValueError: If model is not trained.
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
@@ -336,8 +412,8 @@ class LatentMiner:
         return pd.DataFrame(mu.cpu().numpy(), columns=latent_cols, index=data.index)
 
     def interpret_latents(self, data: pd.DataFrame, samples: int = 100) -> pd.DataFrame:
-        """
-        Interprets the discovered latent variables using SHAP values.
+        """Interprets the discovered latent variables using SHAP values.
+
         Returns a DataFrame where rows are Latent Variables and columns are Input Features,
         representing the mean absolute SHAP value (Global Feature Importance).
 
@@ -347,6 +423,9 @@ class LatentMiner:
 
         Returns:
             pd.DataFrame: Global feature importance matrix (Latent x Features).
+
+        Raises:
+            ValueError: If model is not trained.
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")

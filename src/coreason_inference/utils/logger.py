@@ -17,6 +17,14 @@ __all__ = ["logger", "setup_logging"]
 
 
 def setup_logging() -> None:
+    """Configures the application logging using Loguru.
+
+    Sets up:
+    1. A stderr handler for human-readable console output.
+    2. A file handler with rotation and retention policies for persistent logs.
+
+    The log file is created at `logs/app.log`.
+    """
     # Remove default handler
     logger.remove()
 

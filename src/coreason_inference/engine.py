@@ -30,8 +30,7 @@ from coreason_inference.utils.logger import logger
 
 
 class InferenceResult(BaseModel):
-    """
-    Container for the results of the full causal inference pipeline.
+    """Container for the results of the full causal inference pipeline.
 
     Attributes:
         graph: The discovered causal graph (including loops).
@@ -49,17 +48,17 @@ class InferenceResult(BaseModel):
 
 
 class InferenceEngine:
-    """
-    The 'Principal Investigator' / Mechanism Engine.
+    """The 'Principal Investigator' / Mechanism Engine.
+
     Orchestrates the Discover-Represent-Simulate-Act loop.
 
     This engine integrates:
-    1.  DynamicsEngine: For feedback loop discovery.
-    2.  LatentMiner: For representation learning (confounders).
-    3.  ActiveScientist: For experimental design.
-    4.  CausalEstimator: For effect estimation (ATE/CATE).
-    5.  RuleInductor: For subgroup optimization (TPP).
-    6.  VirtualSimulator: For in-silico trials.
+    1. DynamicsEngine: For feedback loop discovery.
+    2. LatentMiner: For representation learning (confounders).
+    3. ActiveScientist: For experimental design.
+    4. CausalEstimator: For effect estimation (ATE/CATE).
+    5. RuleInductor: For subgroup optimization (TPP).
+    6. VirtualSimulator: For in-silico trials.
     """
 
     def __init__(
@@ -70,8 +69,7 @@ class InferenceEngine:
         virtual_simulator: Optional[VirtualSimulator] = None,
         rule_inductor: Optional[RuleInductor] = None,
     ) -> None:
-        """
-        Initializes the InferenceEngine with its component engines.
+        """Initializes the InferenceEngine with its component engines.
 
         Args:
             dynamics_engine: Engine for discovering system dynamics and loops.
@@ -110,8 +108,7 @@ class InferenceEngine:
         variable_cols: List[str],
         estimate_effect_for: Optional[tuple[str, str]] = None,
     ) -> InferenceResult:
-        """
-        Executes the full causal discovery pipeline (Discover-Represent-Act-Simulate).
+        """Executes the full causal discovery pipeline (Discover-Represent-Act-Simulate).
 
         Args:
             data: Input dataframe containing time-series data.
@@ -122,6 +119,9 @@ class InferenceEngine:
         Returns:
             InferenceResult: The consolidated results containing the graph, latents, proposals,
             and augmented data.
+
+        Raises:
+            ValueError: If input data is empty or invalid.
         """
         logger.info("Starting Inference Engine Pipeline...")
 
@@ -198,8 +198,8 @@ class InferenceEngine:
         return result_obj
 
     def explain_latents(self, background_samples: int = 100) -> pd.DataFrame:
-        """
-        Returns the interpretation of the latent variables (SHAP values).
+        """Returns the interpretation of the latent variables (SHAP values).
+
         Calculates global feature importance (Mean Absolute SHAP) for each latent dimension.
 
         Args:
@@ -207,6 +207,9 @@ class InferenceEngine:
 
         Returns:
             pd.DataFrame: A matrix where rows are Latent Variables (Z) and columns are Input Features.
+
+        Raises:
+            ValueError: If the pipeline hasn't been run or data is missing.
         """
         if self.latent_miner.model is None:
             raise ValueError("Pipeline not run or latent miner not fitted.")
@@ -228,8 +231,7 @@ class InferenceEngine:
         return self.latent_miner.interpret_latents(explanation_data, samples=background_samples)
 
     def estimate_effect(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
-        """
-        Direct access to the CausalEstimator (Simulate).
+        """Direct access to the CausalEstimator (Simulate).
 
         Args:
             treatment: Treatment variable name.
@@ -238,12 +240,15 @@ class InferenceEngine:
 
         Returns:
             InterventionResult: The result of the intervention estimation.
+
+        Raises:
+            ValueError: If data is not available.
         """
         return self._estimator.estimate_effect(treatment, outcome, confounders)
 
     def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
-        """
-        Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
+        """Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
+
         Stores the estimates for subsequent rule induction.
 
         Args:
@@ -253,6 +258,9 @@ class InferenceEngine:
 
         Returns:
             InterventionResult: Result containing ATE and CATE estimates.
+
+        Raises:
+            ValueError: If data is not available.
         """
         logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
 
@@ -280,8 +288,7 @@ class InferenceEngine:
         return result
 
     def induce_rules(self, feature_cols: Optional[List[str]] = None) -> OptimizationOutput:
-        """
-        Induces rules to identify Super-Responders based on stored CATE estimates.
+        """Induces rules to identify Super-Responders based on stored CATE estimates.
 
         Args:
             feature_cols: Optional list of columns to use as features for rule induction.
@@ -289,6 +296,9 @@ class InferenceEngine:
 
         Returns:
             OptimizationOutput: The optimization rules and projected uplift.
+
+        Raises:
+            ValueError: If CATE estimates are missing or data is unavailable.
         """
         if self.cate_estimates is None:
             raise ValueError("No CATE estimates found. Run analyze_heterogeneity() first.")
@@ -327,9 +337,7 @@ class InferenceEngine:
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
     ) -> VirtualTrialResult:
-        """
-        Runs a virtual trial: Generates synthetic cohort based on optimized rules,
-        scans for safety risks, and simulates the treatment effect.
+        """Runs a virtual trial: Generates synthetic cohort, scans safety, and simulates effect.
 
         Args:
             optimization_result: Output from RuleInductor containing new_criteria.
@@ -341,6 +349,9 @@ class InferenceEngine:
 
         Returns:
             VirtualTrialResult: Result containing cohort size, safety flags, and effect estimate.
+
+        Raises:
+            ValueError: If model is not fitted.
         """
         if self.latent_miner.model is None or self.graph is None:
             raise ValueError("Model not fitted. Run analyze() first.")
