@@ -114,3 +114,103 @@ def test_max_degree_heuristic_fully_oriented() -> None:
 
     proposals = scientist.propose_experiments()
     assert len(proposals) == 0
+
+
+def test_tie_breaking_square_graph() -> None:
+    """
+    Test tie-breaking in a square graph where all nodes have equal degree.
+    A -- B
+    |    |
+    D -- C
+
+    All have degree 2.
+    Expected: Should pick 'A' (index 0) if using argmax/first index.
+    """
+    scientist = ActiveScientist()
+    labels = ["A", "B", "C", "D"]
+    # 0, 1, 2, 3
+    adj = np.zeros((4, 4))
+
+    # A-B (0-1)
+    adj[0, 1] = ENDPOINT_TAIL
+    adj[1, 0] = ENDPOINT_TAIL
+    # B-C (1-2)
+    adj[1, 2] = ENDPOINT_TAIL
+    adj[2, 1] = ENDPOINT_TAIL
+    # C-D (2-3)
+    adj[2, 3] = ENDPOINT_TAIL
+    adj[3, 2] = ENDPOINT_TAIL
+    # D-A (3-0)
+    adj[3, 0] = ENDPOINT_TAIL
+    adj[0, 3] = ENDPOINT_TAIL
+
+    scientist.cpdag = adj
+    scientist.labels = labels
+
+    proposals = scientist.propose_experiments()
+    assert len(proposals) == 1
+    # Should pick first one in list that has max degree (2).
+    # np.argmax returns first occurrence of max.
+    # Indices: A=0, B=1, C=2, D=3.
+    # Degree: A=2, B=2, C=2, D=2.
+    # Argmax should be 0 (A).
+    assert proposals[0].target == "A"
+    assert "2" in proposals[0].rationale
+
+
+def test_disconnected_components() -> None:
+    """
+    Test graph with disconnected components.
+    Comp 1: A -- B (Degrees: 1, 1)
+    Comp 2: Triangle C--D, D--E, E--C (Degrees: 2, 2, 2)
+
+    Should pick from Component 2 (C, D, or E).
+    """
+    scientist = ActiveScientist()
+    labels = ["A", "B", "C", "D", "E"]
+    adj = np.zeros((5, 5))
+
+    # Comp 1: A(0)-B(1)
+    adj[0, 1] = ENDPOINT_TAIL
+    adj[1, 0] = ENDPOINT_TAIL
+
+    # Comp 2: C(2)-D(3)-E(4)-C(2)
+    # C-D
+    adj[2, 3] = ENDPOINT_TAIL
+    adj[3, 2] = ENDPOINT_TAIL
+    # D-E
+    adj[3, 4] = ENDPOINT_TAIL
+    adj[4, 3] = ENDPOINT_TAIL
+    # E-C
+    adj[4, 2] = ENDPOINT_TAIL
+    adj[2, 4] = ENDPOINT_TAIL
+
+    scientist.cpdag = adj
+    scientist.labels = labels
+
+    proposals = scientist.propose_experiments()
+    assert len(proposals) == 1
+
+    # Expect C (index 2) as it is the first with degree 2.
+    assert proposals[0].target == "C"
+    assert "2" in proposals[0].rationale
+
+
+def test_single_undirected_edge() -> None:
+    """
+    Test minimal case: A -- B.
+    Both degree 1. Should pick A.
+    """
+    scientist = ActiveScientist()
+    labels = ["A", "B"]
+    adj = np.zeros((2, 2))
+    adj[0, 1] = ENDPOINT_TAIL
+    adj[1, 0] = ENDPOINT_TAIL
+
+    scientist.cpdag = adj
+    scientist.labels = labels
+
+    proposals = scientist.propose_experiments()
+    assert len(proposals) == 1
+    assert proposals[0].target == "A"
+    assert "1" in proposals[0].rationale
