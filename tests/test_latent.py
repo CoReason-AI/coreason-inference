@@ -34,7 +34,7 @@ class TestCausalVAE:
         model = CausalVAE(input_dim, latent_dim=latent_dim)
 
         x = torch.randn(batch_size, input_dim)
-        x_hat, mu, logvar = model(x)
+        x_hat, mu, logvar, z = model(x)
 
         assert x_hat.shape == (batch_size, input_dim)
         assert mu.shape == (batch_size, latent_dim)
