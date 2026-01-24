@@ -71,8 +71,6 @@ class ActiveScientist:
         if self.cpdag is None:
             raise ValueError("Model not fitted. Call fit() first.")
 
-        n_nodes = len(self.labels)
-
         # Calculate Undirected Degree for each node
         # Undirected Edge (i, j): M[i, j] == TAIL and M[j, i] == TAIL
         # Vectorized check for undirected edges
