@@ -8,6 +8,6 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
-from coreason_inference.engine import InferenceEngine, InferenceResult
+from coreason_inference.engine import InferenceEngine, InferenceEngineAsync, InferenceResult
 
-__all__ = ["InferenceEngine", "InferenceResult"]
+__all__ = ["InferenceEngine", "InferenceEngineAsync", "InferenceResult"]
