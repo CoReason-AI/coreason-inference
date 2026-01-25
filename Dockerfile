@@ -20,6 +20,14 @@ RUN python -m build --wheel --outdir /wheels
 # Stage 2: Runtime
 FROM python:3.12-slim AS runtime
 
+# Install system dependencies
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash appuser
 USER appuser
@@ -35,3 +43,6 @@ COPY --from=builder /wheels /wheels
 
 # Install the application wheel
 RUN pip install --no-cache-dir /wheels/*.whl
+
+# Command to run the server
+CMD ["uvicorn", "coreason_inference.server:app", "--host", "0.0.0.0", "--port", "8000"]
