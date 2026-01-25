@@ -22,6 +22,7 @@ FROM python:3.12-slim AS runtime
 
 # Install system dependencies
 USER root
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gfortran \
     libopenblas-dev \

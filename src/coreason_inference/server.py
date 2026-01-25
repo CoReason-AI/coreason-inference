@@ -48,28 +48,28 @@ app = FastAPI(lifespan=lifespan, title="Service G: Causal Simulation")
 
 # Pydantic Models
 
-class AnalyzeCausalRequest(BaseModel):
+class AnalyzeCausalRequest(BaseModel):  # type: ignore[misc]
     dataset: List[Dict[str, float]]
     variables: List[str]
     method: str = "dynamics"  # "dynamics" or "pc"
 
 
-class AnalyzeCausalResponse(BaseModel):
+class AnalyzeCausalResponse(BaseModel):  # type: ignore[misc]
     graph: Dict[str, Any]
     metrics: Dict[str, float]
 
 
-class SimulateVirtualRequest(BaseModel):
+class SimulateVirtualRequest(BaseModel):  # type: ignore[misc]
     initial_state: Dict[str, float]
     intervention: Optional[Dict[str, float]] = None
     steps: int = 10
 
 
-class SimulateVirtualResponse(BaseModel):
+class SimulateVirtualResponse(BaseModel):  # type: ignore[misc]
     trajectory: List[Dict[str, float]]
 
 
-@app.post("/analyze/causal", response_model=AnalyzeCausalResponse)
+@app.post("/analyze/causal", response_model=AnalyzeCausalResponse)  # type: ignore
 async def analyze_causal(request: AnalyzeCausalRequest) -> AnalyzeCausalResponse:
     """Performs causal discovery on the provided dataset."""
     if not request.dataset:
@@ -151,7 +151,7 @@ async def analyze_causal(request: AnalyzeCausalRequest) -> AnalyzeCausalResponse
         raise HTTPException(status_code=400, detail=f"Unknown method: {request.method}")
 
 
-@app.post("/simulate/virtual", response_model=SimulateVirtualResponse)
+@app.post("/simulate/virtual", response_model=SimulateVirtualResponse)  # type: ignore
 async def simulate_virtual(request: SimulateVirtualRequest) -> SimulateVirtualResponse:
     """Simulates a virtual trajectory given an initial state and intervention."""
     simulator = VirtualSimulator()
