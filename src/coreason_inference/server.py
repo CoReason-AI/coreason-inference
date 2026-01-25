@@ -48,24 +48,24 @@ app = FastAPI(lifespan=lifespan, title="Service G: Causal Simulation")
 
 # Pydantic Models
 
-class AnalyzeCausalRequest(BaseModel):  # type: ignore[misc]
+class AnalyzeCausalRequest(BaseModel):
     dataset: List[Dict[str, float]]
     variables: List[str]
     method: str = "dynamics"  # "dynamics" or "pc"
 
 
-class AnalyzeCausalResponse(BaseModel):  # type: ignore[misc]
+class AnalyzeCausalResponse(BaseModel):
     graph: Dict[str, Any]
     metrics: Dict[str, float]
 
 
-class SimulateVirtualRequest(BaseModel):  # type: ignore[misc]
+class SimulateVirtualRequest(BaseModel):
     initial_state: Dict[str, float]
     intervention: Optional[Dict[str, float]] = None
     steps: int = 10
 
 
-class SimulateVirtualResponse(BaseModel):  # type: ignore[misc]
+class SimulateVirtualResponse(BaseModel):
     trajectory: List[Dict[str, float]]
 
 
