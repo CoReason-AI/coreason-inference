@@ -103,7 +103,7 @@ async def analyze_causal(request: AnalyzeCausalRequest):
 
         except Exception as e:
             logger.error(f"Dynamics analysis failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") from e
 
     elif request.method == "pc":
         scientist = ActiveScientist()
@@ -128,23 +128,24 @@ async def analyze_causal(request: AnalyzeCausalRequest):
                 dim = len(labels)
                 for i in range(dim):
                     for j in range(dim):
-                        if i == j: continue
+                        if i == j:
+                            continue
                         # Directed Edge i -> j
                         if matrix[i, j] == 1 and matrix[j, i] == -1:
                             edges.append((labels[i], labels[j]))
 
             graph_dict = {
-                "nodes": [{"id": l} for l in labels],
+                "nodes": [{"id": label} for label in labels],
                 "edges": edges,
-                "loop_dynamics": [], # PC finds DAGs/CPDAGs (acyclic usually, but CPDAG can represent equivalence)
-                "stability_score": 0.0
+                "loop_dynamics": [],  # PC finds DAGs/CPDAGs (acyclic usually, but CPDAG can represent equivalence)
+                "stability_score": 0.0,
             }
 
             return AnalyzeCausalResponse(graph=graph_dict, metrics={})
 
         except Exception as e:
             logger.error(f"PC analysis failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") from e
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown method: {request.method}")
@@ -171,4 +172,4 @@ async def simulate_virtual(request: SimulateVirtualRequest):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Simulation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
