@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from coreason_inference.server import app
 from coreason_inference.schema import CausalGraph, CausalNode
 
-def test_analyze_causal_dynamics():
+def test_analyze_causal_dynamics() -> None:
     # Create dummy data
     data = [{"X": float(np.sin(t)), "Y": float(np.cos(t)), "time": float(t)} for t in np.linspace(0, 10, 20)]
 
@@ -42,7 +42,7 @@ def test_analyze_causal_dynamics():
             # Verify fit was called
             instance.fit.assert_called()
 
-def test_simulate_virtual():
+def test_simulate_virtual() -> None:
     # This test relies on the lifespan handler which loads a real (but small) model
     with TestClient(app) as client:
         initial_state = {"X": 0.0, "Y": 1.0}
@@ -66,7 +66,7 @@ def test_simulate_virtual():
         assert abs(traj[0]["X"] - 0.5) < 1e-4
         assert abs(traj[-1]["X"] - 0.5) < 1e-4
 
-def test_analyze_causal_pc():
+def test_analyze_causal_pc() -> None:
     # Create dummy data with more samples for PC
     t = np.linspace(0, 10, 100)
     data = [{"X": float(np.sin(x)), "Y": float(np.cos(x))} for x in t]

@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ models: Dict[str, Any] = {}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Lifespan event handler to pre-load models."""
     logger.info("Initializing Service G... Pre-loading models.")
 
@@ -70,7 +70,7 @@ class SimulateVirtualResponse(BaseModel):
 
 
 @app.post("/analyze/causal", response_model=AnalyzeCausalResponse)
-async def analyze_causal(request: AnalyzeCausalRequest):
+async def analyze_causal(request: AnalyzeCausalRequest) -> AnalyzeCausalResponse:
     """Performs causal discovery on the provided dataset."""
     if not request.dataset:
         raise HTTPException(status_code=400, detail="Dataset is empty")
@@ -152,7 +152,7 @@ async def analyze_causal(request: AnalyzeCausalRequest):
 
 
 @app.post("/simulate/virtual", response_model=SimulateVirtualResponse)
-async def simulate_virtual(request: SimulateVirtualRequest):
+async def simulate_virtual(request: SimulateVirtualRequest) -> SimulateVirtualResponse:
     """Simulates a virtual trajectory given an initial state and intervention."""
     simulator = VirtualSimulator()
     model = models.get("default_dynamics")
@@ -169,7 +169,7 @@ async def simulate_virtual(request: SimulateVirtualRequest):
         )
         return SimulateVirtualResponse(trajectory=trajectory)
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        raise HTTPException(status_code=400, detail=str(ve)) from ve
     except Exception as e:
         logger.error(f"Simulation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

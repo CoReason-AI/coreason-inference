@@ -305,7 +305,7 @@ class VirtualSimulator:
             if intervened_indices:
                 original_func = func
 
-                def intervened_func(t, y):
+                def intervened_func(t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
                     dy = original_func(t, y)
                     # Zero out derivatives for intervened vars
                     for idx in intervened_indices:
