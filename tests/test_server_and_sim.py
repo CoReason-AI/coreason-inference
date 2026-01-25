@@ -1,9 +1,11 @@
+from unittest.mock import patch
+
 import numpy as np
-import pytest
-from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
-from coreason_inference.server import app
+
 from coreason_inference.schema import CausalGraph, CausalNode
+from coreason_inference.server import app
+
 
 def test_analyze_causal_dynamics() -> None:
     # Create dummy data
@@ -13,11 +15,11 @@ def test_analyze_causal_dynamics() -> None:
     mock_graph = CausalGraph(
         nodes=[
             CausalNode(id="X", codex_concept_id=1, is_latent=False),
-            CausalNode(id="Y", codex_concept_id=2, is_latent=False)
+            CausalNode(id="Y", codex_concept_id=2, is_latent=False),
         ],
         edges=[("X", "Y")],
         loop_dynamics=[],
-        stability_score=0.95
+        stability_score=0.95,
     )
 
     with patch("coreason_inference.server.DynamicsEngine") as MockEngine:
@@ -26,12 +28,7 @@ def test_analyze_causal_dynamics() -> None:
 
         with TestClient(app) as client:
             response = client.post(
-                "/analyze/causal",
-                json={
-                    "dataset": data,
-                    "variables": ["X", "Y"],
-                    "method": "dynamics"
-                }
+                "/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "dynamics"}
             )
             assert response.status_code == 200
             json_resp = response.json()
@@ -42,17 +39,13 @@ def test_analyze_causal_dynamics() -> None:
             # Verify fit was called
             instance.fit.assert_called()
 
+
 def test_simulate_virtual() -> None:
     # This test relies on the lifespan handler which loads a real (but small) model
     with TestClient(app) as client:
         initial_state = {"X": 0.0, "Y": 1.0}
         response = client.post(
-            "/simulate/virtual",
-            json={
-                "initial_state": initial_state,
-                "steps": 5,
-                "intervention": {"X": 0.5}
-            }
+            "/simulate/virtual", json={"initial_state": initial_state, "steps": 5, "intervention": {"X": 0.5}}
         )
         if response.status_code != 200:
             print(response.json())
@@ -60,11 +53,12 @@ def test_simulate_virtual() -> None:
         json_resp = response.json()
         assert "trajectory" in json_resp
         traj = json_resp["trajectory"]
-        assert len(traj) == 6 # steps + 1
+        assert len(traj) == 6  # steps + 1
 
         # Verify intervention
         assert abs(traj[0]["X"] - 0.5) < 1e-4
         assert abs(traj[-1]["X"] - 0.5) < 1e-4
+
 
 def test_analyze_causal_pc() -> None:
     # Create dummy data with more samples for PC
@@ -86,14 +80,7 @@ def test_analyze_causal_pc() -> None:
         instance.labels = ["X", "Y"]
 
         with TestClient(app) as client:
-            response = client.post(
-                "/analyze/causal",
-                json={
-                    "dataset": data,
-                    "variables": ["X", "Y"],
-                    "method": "pc"
-                }
-            )
+            response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "pc"})
             assert response.status_code == 200
             json_resp = response.json()
             assert "graph" in json_resp

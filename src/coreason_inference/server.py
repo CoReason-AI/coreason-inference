@@ -23,11 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Create dummy data to fit a default DynamicsEngine
     # This ensures /simulate/virtual has a model to use if none is provided dynamically
     t = np.linspace(0, 10, 20)
-    data = pd.DataFrame({
-        "X": np.sin(t),
-        "Y": np.cos(t),
-        "time": t
-    })
+    data = pd.DataFrame({"X": np.sin(t), "Y": np.cos(t), "time": t})
 
     try:
         # Reduced epochs for faster startup since this is just a dummy model
@@ -47,6 +43,7 @@ app = FastAPI(lifespan=lifespan, title="Service G: Causal Simulation")
 
 
 # Pydantic Models
+
 
 class AnalyzeCausalRequest(BaseModel):
     dataset: List[Dict[str, float]]
@@ -162,10 +159,7 @@ async def simulate_virtual(request: SimulateVirtualRequest) -> SimulateVirtualRe
 
     try:
         trajectory = simulator.simulate_trajectory(
-            initial_state=request.initial_state,
-            steps=request.steps,
-            intervention=request.intervention,
-            model=model
+            initial_state=request.initial_state, steps=request.steps, intervention=request.intervention, model=model
         )
         return SimulateVirtualResponse(trajectory=trajectory)
     except ValueError as ve:
