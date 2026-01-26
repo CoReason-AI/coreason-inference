@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -280,7 +281,7 @@ def test_simulate_trajectory_no_scaler() -> None:
     model.method = "dopri5"
 
     # Mock ODE func
-    def odefunc(t, y):
+    def odefunc(t: Any, y: Any) -> Any:
         return y * 0.0
 
     model.model = odefunc
