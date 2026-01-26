@@ -5,7 +5,10 @@ import operator
 from typing import Any, Callable, Dict, List
 
 import networkx as nx
+import numpy as np
 import pandas as pd
+import torch
+from torchdiffeq import odeint
 
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
@@ -238,3 +241,94 @@ class VirtualSimulator:
                 break
 
         return filtered_data
+
+    def simulate_trajectory(
+        self,
+        initial_state: Dict[str, float],
+        steps: int,
+        intervention: Dict[str, float] | None = None,
+        model: Any | None = None,
+    ) -> List[Dict[str, float]]:
+        """Simulates a trajectory using a trained DynamicsEngine.
+
+        Args:
+            initial_state: Initial values for the variables.
+            steps: Number of time steps to simulate.
+            intervention: Dictionary of interventions (variable -> value).
+            model: The trained DynamicsEngine instance.
+
+        Returns:
+            List[Dict[str, float]]: List of states (trajectory).
+        """
+        if model is None:
+            raise ValueError("No model provided for simulation.")
+
+        # We assume model is an instance of DynamicsEngine
+        if not hasattr(model, "variable_names") or not model.variable_names:
+            raise ValueError("Model has no variable names. Is it fitted?")
+
+        if not hasattr(model, "model") or model.model is None:
+            raise ValueError("Model has no internal ODEFunc. Is it fitted?")
+
+        # Prepare initial state vector
+        var_names = model.variable_names
+        y0_vals = []
+        for name in var_names:
+            val = initial_state.get(name)
+            # Apply intervention to initial state if present
+            if intervention and name in intervention:
+                val = intervention[name]
+
+            if val is None:
+                raise ValueError(f"Missing initial value for variable '{name}'")
+            y0_vals.append(val)
+
+        y0_arr = np.array([y0_vals])  # (1, dim)
+
+        # Scale
+        if model.scaler:
+            y0_scaled = model.scaler.transform(y0_arr)
+        else:
+            y0_scaled = y0_arr
+
+        y0 = torch.tensor(y0_scaled[0], dtype=torch.float32)  # (dim,)
+
+        # Time steps
+        t = torch.linspace(0, steps, steps + 1, dtype=torch.float32)
+
+        # Handle Intervention in Dynamics (Fixing the value)
+        func = model.model
+
+        if intervention:
+            intervened_indices = [i for i, name in enumerate(var_names) if name in intervention]
+
+            if intervened_indices:
+                original_func = func
+
+                def intervened_func(t: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+                    dy = original_func(t, y)
+                    # Zero out derivatives for intervened vars
+                    for idx in intervened_indices:
+                        dy[idx] = 0.0
+                    return dy
+
+                func = intervened_func
+
+        # Integrate
+        with torch.no_grad():
+            trajectory_tensor = odeint(func, y0, t, method=model.method or "dopri5")
+
+        # Inverse Scale
+        traj_numpy = trajectory_tensor.numpy()
+        if model.scaler:
+            traj_original = model.scaler.inverse_transform(traj_numpy)
+        else:
+            traj_original = traj_numpy
+
+        # Convert to output format
+        result = []
+        for i in range(len(traj_original)):
+            state = {name: float(traj_original[i, j]) for j, name in enumerate(var_names)}
+            result.append(state)
+
+        return result
