@@ -11,6 +11,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.engine import InferenceEngine
@@ -55,8 +56,12 @@ class TestEngineExplainabilityComplex:
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # Run pipeline
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         engine.analyze(
-            data=synthetic_structured_data, time_col="time", variable_cols=["Feature_A", "Feature_B", "Feature_Noise"]
+            data=synthetic_structured_data,
+            time_col="time",
+            variable_cols=["Feature_A", "Feature_B", "Feature_Noise"],
+            user_context=user,
         )
 
         # Explain latents
@@ -92,7 +97,8 @@ class TestEngineExplainabilityComplex:
 
         # Inject robust dynamics engine (rk4) to handle random noise data without underflow
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
-        engine.analyze(df, "time", ["X", "Y"])
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        engine.analyze(df, "time", ["X", "Y"], user_context=user)
 
         # Request 100 samples (dataset only has 10)
         explanation = engine.explain_latents(background_samples=100)
@@ -110,15 +116,16 @@ class TestEngineExplainabilityComplex:
 
         # Inject robust dynamics engine (rk4)
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
 
         # 1. Analyze A, B
-        engine.analyze(df, "time", ["A", "B"])
+        engine.analyze(df, "time", ["A", "B"], user_context=user)
         expl_1 = engine.explain_latents(background_samples=10)
         assert set(expl_1.columns) == {"A", "B"}
 
         # 2. Re-analyze B, C
         # Should overwrite previous state
-        engine.analyze(df, "time", ["B", "C"])
+        engine.analyze(df, "time", ["B", "C"], user_context=user)
         expl_2 = engine.explain_latents(background_samples=10)
         assert set(expl_2.columns) == {"B", "C"}
         assert "A" not in expl_2.columns

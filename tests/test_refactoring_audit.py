@@ -44,6 +44,7 @@ def test_inference_engine_dependency_injection() -> None:
     Verify we can inject custom components into InferenceEngine.
     This improves testability and decoupling.
     """
+    from coreason_identity.models import UserContext
     from coreason_inference.engine import InferenceEngine
 
     mock_dynamics = MagicMock()
@@ -65,7 +66,8 @@ def test_inference_engine_dependency_injection() -> None:
 
     # Test analyze call propagates to mock
     df = pd.DataFrame({"t": [0, 1], "A": [1, 2]})
-    engine.analyze(df, "t", ["A"])
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    engine.analyze(df, "t", ["A"], user_context=user)
 
     mock_dynamics.fit.assert_called_once()
     mock_dynamics.discover_loops.assert_called_once()

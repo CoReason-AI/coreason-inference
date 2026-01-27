@@ -3,6 +3,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from coreason_identity.models import UserContext
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -67,8 +68,16 @@ class SimulateVirtualResponse(BaseModel):
 
 
 @app.post("/analyze/causal", response_model=AnalyzeCausalResponse)  # type: ignore
-async def analyze_causal(request: AnalyzeCausalRequest) -> AnalyzeCausalResponse:
+async def analyze_causal(
+    request: AnalyzeCausalRequest, user_context: UserContext | None = None
+) -> AnalyzeCausalResponse:
     """Performs causal discovery on the provided dataset."""
+    if not user_context:
+        raise HTTPException(status_code=401, detail="Missing user context")
+
+    tenant_id = user_context.claims.get("tenant_id", "unknown")
+    logger.info(f"Starting Causal Discovery for User: {user_context.user_id}, Tenant: {tenant_id}")
+
     if not request.dataset:
         raise HTTPException(status_code=400, detail="Dataset is empty")
 
@@ -149,8 +158,16 @@ async def analyze_causal(request: AnalyzeCausalRequest) -> AnalyzeCausalResponse
 
 
 @app.post("/simulate/virtual", response_model=SimulateVirtualResponse)  # type: ignore
-async def simulate_virtual(request: SimulateVirtualRequest) -> SimulateVirtualResponse:
+async def simulate_virtual(
+    request: SimulateVirtualRequest, user_context: UserContext | None = None
+) -> SimulateVirtualResponse:
     """Simulates a virtual trajectory given an initial state and intervention."""
+    if not user_context:
+        raise HTTPException(status_code=401, detail="Missing user context")
+
+    tenant_id = user_context.claims.get("tenant_id", "unknown")
+    logger.info(f"Starting Virtual Simulation for User: {user_context.user_id}, Tenant: {tenant_id}")
+
     simulator = VirtualSimulator()
     model = models.get("default_dynamics")
 

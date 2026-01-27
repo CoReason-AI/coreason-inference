@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import (
@@ -61,6 +62,7 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
     mock_simulate.return_value = mock_sim_result
 
     # Execute
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
     result = mock_engine.run_virtual_trial(
         optimization_result=optimization_result,
         treatment="T",
@@ -68,6 +70,7 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
         confounders=["X"],
         n_samples=100,
         adverse_outcomes=["Adverse1"],
+        user_context=user,
     )
 
     # Assertions
@@ -89,8 +92,15 @@ def test_run_virtual_trial_not_fitted(mock_engine: InferenceEngine) -> None:
     """Test that it raises error if miner not fitted."""
     mock_engine.latent_miner.model = None
 
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
     with pytest.raises(ValueError, match="Model not fitted"):
-        mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+        mock_engine.run_virtual_trial(
+            optimization_result=MagicMock(),
+            treatment="T",
+            outcome="Y",
+            confounders=[],
+            user_context=user,
+        )
 
 
 def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
@@ -100,7 +110,14 @@ def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
 
     mock_generate.return_value = pd.DataFrame()
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    result = mock_engine.run_virtual_trial(
+        optimization_result=MagicMock(),
+        treatment="T",
+        outcome="Y",
+        confounders=[],
+        user_context=user,
+    )
 
     assert isinstance(result, VirtualTrialResult)
     assert result.cohort_size == 0
@@ -117,7 +134,14 @@ def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine) -> N
     mock_generate.return_value = pd.DataFrame({"A": [1]})
     mock_simulate.side_effect = Exception("Sim Error")
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    result = mock_engine.run_virtual_trial(
+        optimization_result=MagicMock(),
+        treatment="T",
+        outcome="Y",
+        confounders=[],
+        user_context=user,
+    )
 
     assert isinstance(result, VirtualTrialResult)
     assert result.simulation_result is None

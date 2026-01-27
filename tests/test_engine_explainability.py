@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import CausalGraph
@@ -75,7 +76,13 @@ class TestEngineExplainability:
         monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
 
         # Run analyze
-        engine.analyze(data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"])
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        engine.analyze(
+            data=mock_data,
+            time_col="time",
+            variable_cols=["feature_1", "feature_2"],
+            user_context=user,
+        )
 
         # Call explain_latents
         explanation = engine.explain_latents(background_samples=50)

@@ -31,7 +31,11 @@ def test_analyze_causal_dynamics() -> None:
 
         with TestClient(app) as client:
             response = client.post(
-                "/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "dynamics"}
+                "/analyze/causal",
+                json={
+                    "request": {"dataset": data, "variables": ["X", "Y"], "method": "dynamics"},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
             )
             assert response.status_code == 200
             json_resp = response.json()
@@ -45,7 +49,13 @@ def test_analyze_causal_dynamics() -> None:
 
 def test_analyze_causal_empty_dataset() -> None:
     with TestClient(app) as client:
-        response = client.post("/analyze/causal", json={"dataset": [], "variables": ["X", "Y"], "method": "dynamics"})
+        response = client.post(
+            "/analyze/causal",
+            json={
+                "request": {"dataset": [], "variables": ["X", "Y"], "method": "dynamics"},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
+        )
         assert response.status_code == 400
         assert "Dataset is empty" in response.json()["detail"]
 
@@ -53,7 +63,13 @@ def test_analyze_causal_empty_dataset() -> None:
 def test_analyze_causal_missing_variable_dynamics() -> None:
     data = [{"X": 1.0, "time": 0.0}]
     with TestClient(app) as client:
-        response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "dynamics"})
+        response = client.post(
+            "/analyze/causal",
+            json={
+                "request": {"dataset": data, "variables": ["X", "Y"], "method": "dynamics"},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
+        )
         assert response.status_code == 400
         assert "Variable 'Y' not found" in response.json()["detail"]
 
@@ -69,7 +85,11 @@ def test_analyze_causal_missing_time_col_dynamics() -> None:
 
         with TestClient(app) as client:
             response = client.post(
-                "/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "dynamics"}
+                "/analyze/causal",
+                json={
+                    "request": {"dataset": data, "variables": ["X", "Y"], "method": "dynamics"},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
             )
             assert response.status_code == 200
             # Ensure fit was called with generated time col (index)
@@ -86,7 +106,13 @@ def test_analyze_causal_dynamics_exception() -> None:
         instance.fit.side_effect = Exception("Fit failed")
 
         with TestClient(app) as client:
-            response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X"], "method": "dynamics"})
+            response = client.post(
+                "/analyze/causal",
+                json={
+                    "request": {"dataset": data, "variables": ["X"], "method": "dynamics"},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
+            )
             assert response.status_code == 500
             assert "Analysis failed" in response.json()["detail"]
 
@@ -111,7 +137,13 @@ def test_analyze_causal_pc() -> None:
         instance.labels = ["X", "Y"]
 
         with TestClient(app) as client:
-            response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "pc"})
+            response = client.post(
+                "/analyze/causal",
+                json={
+                    "request": {"dataset": data, "variables": ["X", "Y"], "method": "pc"},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
+            )
             assert response.status_code == 200
             json_resp = response.json()
             assert "graph" in json_resp
@@ -125,7 +157,13 @@ def test_analyze_causal_pc() -> None:
 def test_analyze_causal_missing_variable_pc() -> None:
     data = [{"X": 1.0}]
     with TestClient(app) as client:
-        response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X", "Y"], "method": "pc"})
+        response = client.post(
+            "/analyze/causal",
+            json={
+                "request": {"dataset": data, "variables": ["X", "Y"], "method": "pc"},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
+        )
         assert response.status_code == 400
         assert "Variable 'Y' not found" in response.json()["detail"]
 
@@ -137,7 +175,13 @@ def test_analyze_causal_pc_exception() -> None:
         instance.fit.side_effect = Exception("PC failed")
 
         with TestClient(app) as client:
-            response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X"], "method": "pc"})
+            response = client.post(
+                "/analyze/causal",
+                json={
+                    "request": {"dataset": data, "variables": ["X"], "method": "pc"},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
+            )
             assert response.status_code == 500
             assert "Analysis failed" in response.json()["detail"]
 
@@ -145,7 +189,13 @@ def test_analyze_causal_pc_exception() -> None:
 def test_analyze_causal_unknown_method() -> None:
     data = [{"X": 1.0}]
     with TestClient(app) as client:
-        response = client.post("/analyze/causal", json={"dataset": data, "variables": ["X"], "method": "magic"})
+        response = client.post(
+            "/analyze/causal",
+            json={
+                "request": {"dataset": data, "variables": ["X"], "method": "magic"},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
+        )
         assert response.status_code == 400
         assert "Unknown method" in response.json()["detail"]
 
@@ -155,7 +205,11 @@ def test_simulate_virtual() -> None:
     with TestClient(app) as client:
         initial_state = {"X": 0.0, "Y": 1.0}
         response = client.post(
-            "/simulate/virtual", json={"initial_state": initial_state, "steps": 5, "intervention": {"X": 0.5}}
+            "/simulate/virtual",
+            json={
+                "request": {"initial_state": initial_state, "steps": 5, "intervention": {"X": 0.5}},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
         )
         if response.status_code != 200:
             print(response.json())
@@ -178,7 +232,13 @@ def test_simulate_virtual_no_model() -> None:
         # Clear models AFTER client startup (lifespan has run)
         models.clear()
 
-        response = client.post("/simulate/virtual", json={"initial_state": {"X": 0.0}, "steps": 5})
+        response = client.post(
+            "/simulate/virtual",
+            json={
+                "request": {"initial_state": {"X": 0.0}, "steps": 5},
+                "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+            },
+        )
         assert response.status_code == 503
         assert "Simulation model not initialized" in response.json()["detail"]
 
@@ -195,7 +255,13 @@ def test_simulate_virtual_value_error() -> None:
         models["default_dynamics"] = MagicMock()
 
         with TestClient(app) as client:
-            response = client.post("/simulate/virtual", json={"initial_state": {"X": 0.0}, "steps": 5})
+            response = client.post(
+                "/simulate/virtual",
+                json={
+                    "request": {"initial_state": {"X": 0.0}, "steps": 5},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
+            )
             assert response.status_code == 400
             assert "Invalid input" in response.json()["detail"]
 
@@ -211,7 +277,13 @@ def test_simulate_virtual_exception() -> None:
         models["default_dynamics"] = MagicMock()
 
         with TestClient(app) as client:
-            response = client.post("/simulate/virtual", json={"initial_state": {"X": 0.0}, "steps": 5})
+            response = client.post(
+                "/simulate/virtual",
+                json={
+                    "request": {"initial_state": {"X": 0.0}, "steps": 5},
+                    "user_context": {"user_id": "test_user", "email": "test@example.com", "claims": {"tenant_id": "test_tenant"}},
+                },
+            )
             assert response.status_code == 500
             assert "Unexpected error" in response.json()["detail"]
 
@@ -289,3 +361,32 @@ def test_simulate_trajectory_no_scaler() -> None:
     traj = sim.simulate_trajectory(initial_state={"X": 1.0}, steps=1, model=model)
     assert len(traj) == 2
     assert traj[0]["X"] == 1.0
+
+def test_analyze_causal_missing_context() -> None:
+    """Test 401 when user context is missing."""
+    data = [{"X": 1.0}]
+    with TestClient(app) as client:
+        # Send correct structure but user_context is None
+        response = client.post(
+            "/analyze/causal",
+            json={
+                "request": {"dataset": data, "variables": ["X"], "method": "dynamics"},
+                "user_context": None,
+            },
+        )
+        assert response.status_code == 401
+        assert "Missing user context" in response.json()["detail"]
+
+
+def test_simulate_virtual_missing_context() -> None:
+    """Test 401 when user context is missing."""
+    with TestClient(app) as client:
+        response = client.post(
+            "/simulate/virtual",
+            json={
+                "request": {"initial_state": {"X": 0.0}, "steps": 5},
+                "user_context": None,
+            },
+        )
+        assert response.status_code == 401
+        assert "Missing user context" in response.json()["detail"]

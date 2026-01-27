@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from causallearn.graph.Endpoint import Endpoint
+from coreason_identity.models import UserContext
 
 from coreason_inference.analysis.active_scientist import ActiveScientist
 
@@ -86,7 +87,8 @@ def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> N
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
 
     assert isinstance(proposals, list)
     assert len(proposals) == 1
@@ -139,8 +141,9 @@ def test_empty_data_error() -> None:
 
 def test_propose_without_fit() -> None:
     scientist = ActiveScientist()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
     with pytest.raises(ValueError, match="Model not fitted"):
-        scientist.propose_experiments()
+        scientist.propose_experiments(user)
 
 
 def test_pc_algorithm_failure(synthetic_data: pd.DataFrame) -> None:
@@ -169,7 +172,8 @@ def test_no_undirected_edges() -> None:
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert proposals == []
 
 
@@ -211,7 +215,8 @@ def test_star_graph_heuristic() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert len(proposals) == 1
 
     # Check rationale for gain count
