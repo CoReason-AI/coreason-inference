@@ -11,6 +11,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.engine import InferenceEngine
@@ -41,7 +42,8 @@ class TestInferenceEngineComplex:
 
         # Inject rk4 to handle random noise without underflow
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
-        result = engine.analyze(data, time_col="time_sec", variable_cols=["A", "B"])
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        result = engine.analyze(data, time_col="time_sec", variable_cols=["A", "B"], user_context=user)
 
         # Check augmented data
         # 1. Should have same index as input
@@ -64,12 +66,13 @@ class TestInferenceEngineComplex:
         df1 = pd.DataFrame(
             {"t": np.arange(10), "X": np.random.randn(10), "Y": np.random.randn(10), "Z": np.random.randn(10)}
         )
-        result1 = engine.analyze(df1, "t", ["X", "Y", "Z"])
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        result1 = engine.analyze(df1, "t", ["X", "Y", "Z"], user_context=user)
         assert len(result1.graph.nodes) == 3
 
         # Run 2: 2 variables
         df2 = pd.DataFrame({"t": np.arange(10), "A": np.random.randn(10), "B": np.random.randn(10)})
-        result2 = engine.analyze(df2, "t", ["A", "B"])
+        result2 = engine.analyze(df2, "t", ["A", "B"], user_context=user)
 
         # Check Result 2
         assert len(result2.graph.nodes) == 2
@@ -110,8 +113,9 @@ class TestInferenceEngineComplex:
         # `ODEFunc(dim)` where dim=0.
         # This likely fails in PyTorch linear layer (input dim 0).
 
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         with pytest.raises(Exception):  # Likely runtime error or validation error # noqa: B017
-            engine.analyze(df, "t", [])
+            engine.analyze(df, "t", [], user_context=user)
 
     def test_propagation_of_component_errors(self) -> None:
         """
@@ -121,5 +125,6 @@ class TestInferenceEngineComplex:
         # Data with NaNs - DynamicsEngine should raise ValueError
         df = pd.DataFrame({"t": [0, 1, 2], "A": [1.0, np.nan, 3.0]})
 
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         with pytest.raises(ValueError, match="NaN"):
-            engine.analyze(df, "t", ["A"])
+            engine.analyze(df, "t", ["A"], user_context=user)

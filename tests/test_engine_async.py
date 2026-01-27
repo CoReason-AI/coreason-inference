@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.engine import InferenceEngine, InferenceEngineAsync, InferenceResult
 from coreason_inference.schema import (
@@ -99,8 +100,13 @@ async def test_analyze_pipeline_mocked() -> None:
             refutation_status=RefutationStatus.PASSED,
         )
 
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         result = await engine.analyze(
-            data=data, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
+            data=data,
+            time_col="time",
+            variable_cols=["A", "B"],
+            user_context=user,
+            estimate_effect_for=("A", "B"),
         )
 
         # Assertions
@@ -149,7 +155,10 @@ async def test_error_handling_in_async_analyze() -> None:
 
     with patch("coreason_inference.engine.CausalEstimator", side_effect=BrokenEstimator):
         # This should catch exception and log error, not raise
-        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        await engine.analyze(
+            data, "time", ["A"], user_context=user, estimate_effect_for=("A", "A")
+        )
 
 
 @pytest.mark.asyncio
@@ -175,7 +184,10 @@ async def test_analyze_missing_estimator() -> None:
         mock_prop.return_value = None
 
         # Should log error about "Estimator not initialized"
-        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        await engine.analyze(
+            data, "time", ["A"], user_context=user, estimate_effect_for=("A", "A")
+        )
 
 
 @pytest.mark.asyncio
@@ -188,12 +200,21 @@ async def test_error_handling_in_virtual_trial() -> None:
     # To hit line 546 (logger.error(f"Virtual trial simulation failed: {e}"))
     # Use patch.object to avoid Mypy "Cannot assign to a method" errors
     with (
-        patch.object(engine.virtual_simulator, "generate_synthetic_cohort", return_value=pd.DataFrame({"A": [1]})),
+        patch.object(
+            engine.virtual_simulator,
+            "generate_synthetic_cohort",
+            return_value=pd.DataFrame({"A": [1]}),
+        ),
         patch.object(engine.virtual_simulator, "scan_safety", return_value=[]),
         patch.object(engine.virtual_simulator, "simulate_trial", side_effect=Exception("Sim Boom")),
     ):
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         result = await engine.run_virtual_trial(
-            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0), "T", "Y", []
+            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0),
+            "T",
+            "Y",
+            [],
+            user_context=user,
         )
 
         assert result.simulation_result is None

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, cast
 import anyio
 import httpx
 import pandas as pd
+from coreason_identity.models import UserContext
 from pydantic import BaseModel, ConfigDict, Field
 
 from coreason_inference.analysis.active_scientist import ActiveScientist
@@ -120,6 +121,7 @@ class InferenceEngineAsync:
         data: pd.DataFrame,
         time_col: str,
         variable_cols: List[str],
+        user_context: UserContext,
         estimate_effect_for: Optional[tuple[str, str]] = None,
     ) -> InferenceResult:
         """Executes the full causal discovery pipeline (Discover-Represent-Act-Simulate).
@@ -128,6 +130,7 @@ class InferenceEngineAsync:
             data: Input dataframe containing time-series data.
             time_col: Name of the time column.
             variable_cols: List of variable columns to analyze.
+            user_context: The context of the user initiating the analysis.
             estimate_effect_for: Optional tuple (treatment, outcome) to run estimation for.
 
         Returns:
@@ -137,6 +140,10 @@ class InferenceEngineAsync:
         Raises:
             ValueError: If input data is empty or invalid.
         """
+        tenant_id = user_context.claims.get("tenant_id", "unknown")
+        logger.info(
+            f"Starting Causal Discovery for User: {user_context.user_id}, Tenant: {tenant_id}"
+        )
         logger.info("Starting Inference Engine Pipeline...")
 
         # 1. Discover (Dynamics)
@@ -169,7 +176,9 @@ class InferenceEngineAsync:
         analysis_data = self.augmented_data[analysis_cols]
 
         await anyio.to_thread.run_sync(self.active_scientist.fit, analysis_data)
-        proposals = await anyio.to_thread.run_sync(self.active_scientist.propose_experiments)
+        proposals = await anyio.to_thread.run_sync(
+            self.active_scientist.propose_experiments, user_context
+        )
         logger.info(f"Generated {len(proposals)} experiment proposals.")
 
         # 4. Simulate (Estimation) - Optional Trigger
@@ -359,6 +368,7 @@ class InferenceEngineAsync:
         treatment: str,
         outcome: str,
         confounders: List[str],
+        user_context: UserContext,
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
     ) -> VirtualTrialResult:
@@ -369,6 +379,7 @@ class InferenceEngineAsync:
             treatment: Treatment variable name.
             outcome: Outcome variable name.
             confounders: List of confounder names.
+            user_context: The context of the user initiating the trial.
             n_samples: Number of digital twins to generate.
             adverse_outcomes: List of adverse outcome names for safety scanning.
 
@@ -380,6 +391,13 @@ class InferenceEngineAsync:
         """
         if self.latent_miner.model is None or self.graph is None:
             raise ValueError("Model not fitted. Run analyze() first.")
+
+        tenant_id = user_context.claims.get("tenant_id", "unknown")
+        logger.info(
+            f"Starting Virtual Trial for User: {user_context.user_id}, Tenant: {tenant_id}"
+        )
+        # Placeholder for Cost Tracking
+        logger.info(f"Recording Simulation Units for User: {user_context.user_id}")
 
         logger.info("Running Virtual Phase 3 Trial...")
 
@@ -554,9 +572,15 @@ class InferenceEngine:
         data: pd.DataFrame,
         time_col: str,
         variable_cols: List[str],
+        user_context: UserContext,
         estimate_effect_for: Optional[tuple[str, str]] = None,
     ) -> InferenceResult:
-        return cast(InferenceResult, anyio.run(self._async.analyze, data, time_col, variable_cols, estimate_effect_for))
+        return cast(
+            InferenceResult,
+            anyio.run(
+                self._async.analyze, data, time_col, variable_cols, user_context, estimate_effect_for
+            ),
+        )
 
     def explain_latents(self, background_samples: int = 100) -> pd.DataFrame:
         return cast(pd.DataFrame, anyio.run(self._async.explain_latents, background_samples))
@@ -576,6 +600,7 @@ class InferenceEngine:
         treatment: str,
         outcome: str,
         confounders: List[str],
+        user_context: UserContext,
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
     ) -> VirtualTrialResult:
@@ -587,6 +612,7 @@ class InferenceEngine:
                 treatment,
                 outcome,
                 confounders,
+                user_context,
                 n_samples,
                 adverse_outcomes,
             ),

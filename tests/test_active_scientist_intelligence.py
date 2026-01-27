@@ -3,6 +3,7 @@
 
 import numpy as np
 from causallearn.graph.Endpoint import Endpoint
+from coreason_identity.models import UserContext
 
 from coreason_inference.analysis.active_scientist import ActiveScientist
 
@@ -37,7 +38,8 @@ def test_max_degree_heuristic_star_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
 
     assert len(proposals) == 1
     proposal = proposals[0]
@@ -82,7 +84,8 @@ def test_max_degree_heuristic_chain_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
 
     assert len(proposals) == 1
     proposal = proposals[0]
@@ -111,7 +114,8 @@ def test_max_degree_heuristic_fully_oriented() -> None:
     scientist.cpdag = adj
     scientist.labels = ["A", "B"]
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert len(proposals) == 0
 
 
@@ -146,7 +150,8 @@ def test_tie_breaking_square_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert len(proposals) == 1
     # Should pick first one in list that has max degree (2).
     # np.argmax returns first occurrence of max.
@@ -187,7 +192,8 @@ def test_disconnected_components() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert len(proposals) == 1
 
     # Expect C (index 2) as it is the first with degree 2.
@@ -209,7 +215,8 @@ def test_single_undirected_edge() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+    proposals = scientist.propose_experiments(user)
     assert len(proposals) == 1
     assert proposals[0].target == "A"
     assert "1" in proposals[0].rationale

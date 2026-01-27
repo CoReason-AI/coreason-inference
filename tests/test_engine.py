@@ -11,6 +11,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from coreason_identity.models import UserContext
 
 from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import CausalGraph, RefutationStatus
@@ -82,8 +83,13 @@ class TestInferenceEngine:
 
         # 3. Run Pipeline
         # We also ask to estimate effect of A on B
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         result = engine.analyze(
-            data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            user_context=user,
+            estimate_effect_for=("A", "B"),
         )
 
         # 4. Validations
@@ -140,8 +146,9 @@ class TestInferenceEngine:
         # checks data.empty which assumes success, then selects.
         # Actually it selects columns first in dynamics.fit.
         # We expect KeyError from pandas, not ValueError.
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         with pytest.raises(KeyError):
-            engine.analyze(df, "time", ["X", "Y_missing"])
+            engine.analyze(df, "time", ["X", "Y_missing"], user_context=user)
 
     def test_engine_state_management(self) -> None:
         """
@@ -164,8 +171,13 @@ class TestInferenceEngine:
 
         # 1. Test missing treatment/outcome columns (Warning path)
         # We need to capture logs to verify warning, but for coverage just running it is enough
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
         engine.analyze(
-            data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("MISSING_A", "MISSING_B")
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            user_context=user,
+            estimate_effect_for=("MISSING_A", "MISSING_B"),
         )
 
         # 2. Test explain_latents after fit
@@ -207,4 +219,11 @@ class TestInferenceEngine:
         monkeypatch.setattr("coreason_inference.engine.CausalEstimator", MockEstimator)
 
         # Should not raise, just log error
-        engine.analyze(data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B"))
+        user = UserContext(user_id="test_user", email="test@example.com", claims={"tenant_id": "test_tenant"})
+        engine.analyze(
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            user_context=user,
+            estimate_effect_for=("A", "B"),
+        )
