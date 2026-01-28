@@ -29,7 +29,7 @@ def sample_data() -> pd.DataFrame:
     )
 
 
-def test_estimator_failure_handling_none_value(sample_data: pd.DataFrame) -> None:
+def test_estimator_failure_handling_none_value(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test that CausalEstimator gracefully handles cases where DoWhy returns None
     for the estimated effect (e.g., due to missing data/confounders).
@@ -45,14 +45,14 @@ def test_estimator_failure_handling_none_value(sample_data: pd.DataFrame) -> Non
         mock_estimate.value = None
         mock_model.estimate_effect.return_value = mock_estimate
 
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], context=mock_user_context)
 
         assert result.refutation_status == RefutationStatus.FAILED
         assert result.counterfactual_outcome is None
         assert result.patient_id == "ERROR"
 
 
-def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame) -> None:
+def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test edge case: User requests personalized inference (target_patient_id),
     but CATE extraction fails (e.g. underlying forest fails).
@@ -78,7 +78,7 @@ def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame) -> None:
         # Request personalized inference
         result = estimator.estimate_effect(
             treatment="T", outcome="Y", confounders=["X"], method=METHOD_FOREST, target_patient_id="P0"
-        )
+        , context=mock_user_context)
 
         # Should fall back to ATE
         assert result.patient_id == "POPULATION_ATE"
@@ -87,7 +87,7 @@ def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame) -> None:
         assert result.refutation_status == RefutationStatus.PASSED
 
 
-def test_refutation_exception_handling(sample_data: pd.DataFrame) -> None:
+def test_refutation_exception_handling(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test edge case: Refutation raises an unhandled exception.
     The updated code handles this by logging warning and setting status to FAILED.
@@ -105,14 +105,14 @@ def test_refutation_exception_handling(sample_data: pd.DataFrame) -> None:
         # Mock Refutation raising Exception
         mock_model.refute_estimate.side_effect = ValueError("Refuter crashed")
 
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], context=mock_user_context)
 
         # Should NOT crash, but return FAILED
         assert result.refutation_status == RefutationStatus.FAILED
         assert result.counterfactual_outcome is None
 
 
-def test_estimation_exception_propagation(sample_data: pd.DataFrame) -> None:
+def test_estimation_exception_propagation(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test that if estimation (model fitting) fails, it raises the exception.
     """
@@ -126,10 +126,10 @@ def test_estimation_exception_propagation(sample_data: pd.DataFrame) -> None:
         mock_model.estimate_effect.side_effect = RuntimeError("Optimization failed")
 
         with pytest.raises(RuntimeError, match="Optimization failed"):
-            estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+            estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], context=mock_user_context)
 
 
-def test_confidence_interval_fallback(sample_data: pd.DataFrame) -> None:
+def test_confidence_interval_fallback(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test that if confidence interval extraction fails, defaults are returned.
     """
@@ -148,14 +148,14 @@ def test_confidence_interval_fallback(sample_data: pd.DataFrame) -> None:
         mock_refutation.refutation_result = {"is_statistically_significant": False, "p_value": 0.5}
         mock_model.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], context=mock_user_context)
 
         # Default value matches effect value (or 0.0? Implementation uses default_value=effect_value)
         # Check implementation: _extract_confidence_intervals(estimate, effect_value) -> returns default_value
         assert result.confidence_interval == (5.0, 5.0)
 
 
-def test_empty_confounders_forest_error(sample_data: pd.DataFrame) -> None:
+def test_empty_confounders_forest_error(sample_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test that calling forest method with empty confounders/effect modifiers
     might cause issues in EconML, handled via exception or propagated.
@@ -167,4 +167,4 @@ def test_empty_confounders_forest_error(sample_data: pd.DataFrame) -> None:
         mock_model.estimate_effect.side_effect = ValueError("EconML Error: X is empty")
 
         with pytest.raises(ValueError, match="EconML Error"):
-            estimator.estimate_effect(treatment="T", outcome="Y", confounders=[], method=METHOD_FOREST)
+            estimator.estimate_effect(treatment="T", outcome="Y", confounders=[], method=METHOD_FOREST, context=mock_user_context)

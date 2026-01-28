@@ -16,7 +16,7 @@ import pandas as pd
 from coreason_inference.analysis.estimator import CausalEstimator
 
 
-def test_estimator_linear_synthetic() -> None:
+def test_estimator_linear_synthetic(mock_user_context) -> None:
     # Synthetic Data: Y = T + 2*X + Noise
     # True Effect = 1.0
     np.random.seed(42)
@@ -29,7 +29,7 @@ def test_estimator_linear_synthetic() -> None:
 
     # Updated API: CausalEstimator takes data in init
     estimator = CausalEstimator(df)
-    result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=False)
+    result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=False, context=mock_user_context)
 
     # Check accuracy (allow some tolerance)
     # Result object has counterfactual_outcome which stores the effect
@@ -39,7 +39,7 @@ def test_estimator_linear_synthetic() -> None:
     assert result.refutation_status == "PASSED"
 
 
-def test_estimator_binary_treatment() -> None:
+def test_estimator_binary_treatment(mock_user_context) -> None:
     # Binary Treatment
     np.random.seed(42)
     n = 200
@@ -54,7 +54,7 @@ def test_estimator_binary_treatment() -> None:
     df = pd.DataFrame({"T": T, "Y": Y, "X": X})
 
     estimator = CausalEstimator(df)
-    result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True)
+    result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True, context=mock_user_context)
 
     # True effect is 2.0
     # DML might be slightly less precise with small N, loosen bounds
@@ -74,7 +74,7 @@ def test_estimator_empty_data() -> None:
     pass
 
 
-def test_refutation_failure_flag() -> None:
+def test_refutation_failure_flag(mock_user_context) -> None:
     # To force refutation failure, we can try to find an effect where there is none,
     # OR rely on a mock to simulate the failure. Mocking is more reliable for testing the logic.
 
@@ -98,6 +98,6 @@ def test_refutation_failure_flag() -> None:
         mock_instance.refute_estimate.return_value = mock_refute
 
         estimator = CausalEstimator(df)
-        result = estimator.estimate_effect("T", "Y", ["X"])
+        result = estimator.estimate_effect("T", "Y", ["X"], context=mock_user_context)
 
         assert result.refutation_status == "FAILED"

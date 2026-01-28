@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 from torchdiffeq import odeint
 
+from coreason_identity.models import UserContext
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.schema import CausalGraph, InterventionResult, ProtocolRule
@@ -160,6 +161,8 @@ class VirtualSimulator:
         outcome: str,
         confounders: List[str],
         method: str = "forest",
+        *,
+        context: UserContext,
     ) -> InterventionResult:
         """Simulates the trial outcome on the synthetic cohort using Causal Estimator.
 
@@ -169,14 +172,18 @@ class VirtualSimulator:
             outcome: Outcome column name.
             confounders: List of confounders.
             method: Estimation method ('linear' or 'forest'). Defaults to 'forest' for heterogeneity.
+            context: The user identity context.
 
         Returns:
             InterventionResult: The estimated effect.
 
         Raises:
-            ValueError: If cohort is empty or columns are missing.
+            ValueError: If cohort is empty or columns are missing or context is missing.
             Exception: If estimator fails.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         if cohort.empty:
             raise ValueError("Cannot simulate trial on empty cohort.")
 
@@ -186,7 +193,7 @@ class VirtualSimulator:
         if outcome not in cohort.columns:
             raise ValueError(f"Outcome '{outcome}' not found in cohort.")
 
-        logger.info(f"Simulating Virtual Trial on {len(cohort)} digital twins. Method: {method}")
+        logger.info(f"Simulating Virtual Trial on {len(cohort)} digital twins. Method: {method}", user_id=context.sub)
 
         try:
             estimator = CausalEstimator(cohort)
@@ -196,6 +203,7 @@ class VirtualSimulator:
                 confounders=confounders,
                 method=method,
                 num_simulations=5,  # Reduced for simulation speed, or make configurable
+                context=context
             )
             return result
         except Exception as e:

@@ -8,6 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference
 
+from functools import partial
 from typing import Any, Dict, List, Optional, cast
 
 import anyio
@@ -15,6 +16,7 @@ import httpx
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
+from coreason_identity.models import UserContext
 from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
@@ -121,6 +123,8 @@ class InferenceEngineAsync:
         time_col: str,
         variable_cols: List[str],
         estimate_effect_for: Optional[tuple[str, str]] = None,
+        *,
+        context: UserContext,
     ) -> InferenceResult:
         """Executes the full causal discovery pipeline (Discover-Represent-Act-Simulate).
 
@@ -129,15 +133,22 @@ class InferenceEngineAsync:
             time_col: Name of the time column.
             variable_cols: List of variable columns to analyze.
             estimate_effect_for: Optional tuple (treatment, outcome) to run estimation for.
+            context: The user identity context.
 
         Returns:
             InferenceResult: The consolidated results containing the graph, latents, proposals,
             and augmented data.
 
         Raises:
-            ValueError: If input data is empty or invalid.
+            ValueError: If input data is empty or invalid or context is missing.
         """
-        logger.info("Starting Inference Engine Pipeline...")
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        logger.info(
+            "Starting Inference Engine Pipeline...",
+            user_id=context.sub,
+        )
 
         # 1. Discover (Dynamics)
         logger.info("Step 1: Discover (Dynamics & Loops)")
@@ -169,7 +180,11 @@ class InferenceEngineAsync:
         analysis_data = self.augmented_data[analysis_cols]
 
         await anyio.to_thread.run_sync(self.active_scientist.fit, analysis_data)
-        proposals = await anyio.to_thread.run_sync(self.active_scientist.propose_experiments)
+
+        def _propose() -> List[ExperimentProposal]:
+            return self.active_scientist.propose_experiments(context=context)
+
+        proposals = await anyio.to_thread.run_sync(_propose)
         logger.info(f"Generated {len(proposals)} experiment proposals.")
 
         # 4. Simulate (Estimation) - Optional Trigger
@@ -191,7 +206,7 @@ class InferenceEngineAsync:
                     def _run_est() -> InterventionResult:
                         if self.estimator is None:
                             raise ValueError("Estimator not initialized")
-                        return self.estimator.estimate_effect(treatment, outcome, confounders)
+                        return self.estimator.estimate_effect(treatment, outcome, confounders, context=context)
 
                     # estimate_effect can be slow (refutation, model training)
                     result = await anyio.to_thread.run_sync(_run_est)
@@ -246,26 +261,46 @@ class InferenceEngineAsync:
         # SHAP calculation is heavy
         return await anyio.to_thread.run_sync(self.latent_miner.interpret_latents, explanation_data, background_samples)
 
-    async def estimate_effect(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
+    async def estimate_effect(
+        self,
+        treatment: str,
+        outcome: str,
+        confounders: List[str],
+        *,
+        context: UserContext,
+    ) -> InterventionResult:
         """Direct access to the CausalEstimator (Simulate).
 
         Args:
             treatment: Treatment variable name.
             outcome: Outcome variable name.
             confounders: List of confounders.
+            context: The user identity context.
 
         Returns:
             InterventionResult: The result of the intervention estimation.
 
         Raises:
-            ValueError: If data is not available.
+            ValueError: If data is not available or context is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         return cast(
             InterventionResult,
-            await anyio.to_thread.run_sync(self._estimator.estimate_effect, treatment, outcome, confounders),
+            await anyio.to_thread.run_sync(
+                lambda: self._estimator.estimate_effect(treatment, outcome, confounders, context=context)
+            ),
         )
 
-    async def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
+    async def analyze_heterogeneity(
+        self,
+        treatment: str,
+        outcome: str,
+        confounders: List[str],
+        *,
+        context: UserContext,
+    ) -> InterventionResult:
         """Estimates Heterogeneous Treatment Effects (CATE) using Causal Forests.
 
         Stores the estimates for subsequent rule induction.
@@ -274,14 +309,18 @@ class InferenceEngineAsync:
             treatment: Treatment variable name.
             outcome: Outcome variable name.
             confounders: List of confounders.
+            context: The user identity context.
 
         Returns:
             InterventionResult: Result containing ATE and CATE estimates.
 
         Raises:
-            ValueError: If data is not available.
+            ValueError: If data is not available or context is missing.
         """
-        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}")
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        logger.info(f"Analyzing Heterogeneity for {treatment} -> {outcome}", user_id=context.sub)
 
         if self.augmented_data is None:
             raise ValueError("Data not available. Run analyze() first.")
@@ -289,7 +328,7 @@ class InferenceEngineAsync:
         # Run estimation with 'forest' method
         def _estimate() -> InterventionResult:
             return self._estimator.estimate_effect(
-                treatment=treatment, outcome=outcome, confounders=confounders, method="forest"
+                treatment=treatment, outcome=outcome, confounders=confounders, method="forest", context=context
             )
 
         result = cast(InterventionResult, await anyio.to_thread.run_sync(_estimate))
@@ -309,19 +348,28 @@ class InferenceEngineAsync:
 
         return result
 
-    async def induce_rules(self, feature_cols: Optional[List[str]] = None) -> OptimizationOutput:
+    async def induce_rules(
+        self,
+        feature_cols: Optional[List[str]] = None,
+        *,
+        context: UserContext,
+    ) -> OptimizationOutput:
         """Induces rules to identify Super-Responders based on stored CATE estimates.
 
         Args:
             feature_cols: Optional list of columns to use as features for rule induction.
                           If None, uses all numeric columns from augmented_data (excluding metadata).
+            context: The user identity context.
 
         Returns:
             OptimizationOutput: The optimization rules and projected uplift.
 
         Raises:
-            ValueError: If CATE estimates are missing or data is unavailable.
+            ValueError: If CATE estimates are missing or data is unavailable or context is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         if self.cate_estimates is None:
             raise ValueError("No CATE estimates found. Run analyze_heterogeneity() first.")
 
@@ -345,7 +393,10 @@ class InferenceEngineAsync:
 
             features = features.drop(columns=[c for c in exclusions if c in features.columns])
 
-        logger.info(f"Inducing rules using {features.shape[1]} features (excluded: {self._last_analysis_meta}).")
+        # Use bind to avoid formatting conflicts with dictionary string representation containing curly braces
+        logger.bind(user_id=context.sub).info(
+            f"Inducing rules using {features.shape[1]} features (excluded: {self._last_analysis_meta})."
+        )
 
         await anyio.to_thread.run_sync(self.rule_inductor.fit, features, self.cate_estimates)
         return cast(
@@ -361,6 +412,8 @@ class InferenceEngineAsync:
         confounders: List[str],
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
+        *,
+        context: UserContext,
     ) -> VirtualTrialResult:
         """Runs a virtual trial: Generates synthetic cohort, scans safety, and simulates effect.
 
@@ -371,17 +424,21 @@ class InferenceEngineAsync:
             confounders: List of confounder names.
             n_samples: Number of digital twins to generate.
             adverse_outcomes: List of adverse outcome names for safety scanning.
+            context: The user identity context.
 
         Returns:
             VirtualTrialResult: Result containing cohort size, safety flags, and effect estimate.
 
         Raises:
-            ValueError: If model is not fitted.
+            ValueError: If model is not fitted or context is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
         if self.latent_miner.model is None or self.graph is None:
             raise ValueError("Model not fitted. Run analyze() first.")
 
-        logger.info("Running Virtual Phase 3 Trial...")
+        logger.info("Running Virtual Phase 3 Trial...", user_id=context.sub)
 
         # 1. Generate Synthetic Cohort
         def _generate() -> pd.DataFrame:
@@ -420,6 +477,7 @@ class InferenceEngineAsync:
                     treatment=treatment,
                     outcome=outcome,
                     confounders=confounders,
+                    context=context,
                 )
 
             sim_result = await anyio.to_thread.run_sync(_simulate)
@@ -555,20 +613,22 @@ class InferenceEngine:
         time_col: str,
         variable_cols: List[str],
         estimate_effect_for: Optional[tuple[str, str]] = None,
+        *,
+        context: UserContext,
     ) -> InferenceResult:
-        return cast(InferenceResult, anyio.run(self._async.analyze, data, time_col, variable_cols, estimate_effect_for))
+        return cast(InferenceResult, anyio.run(partial(self._async.analyze, data, time_col, variable_cols, estimate_effect_for, context=context)))
 
     def explain_latents(self, background_samples: int = 100) -> pd.DataFrame:
         return cast(pd.DataFrame, anyio.run(self._async.explain_latents, background_samples))
 
-    def estimate_effect(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
-        return cast(InterventionResult, anyio.run(self._async.estimate_effect, treatment, outcome, confounders))
+    def estimate_effect(self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext) -> InterventionResult:
+        return cast(InterventionResult, anyio.run(partial(self._async.estimate_effect, treatment, outcome, confounders, context=context)))
 
-    def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str]) -> InterventionResult:
-        return cast(InterventionResult, anyio.run(self._async.analyze_heterogeneity, treatment, outcome, confounders))
+    def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext) -> InterventionResult:
+        return cast(InterventionResult, anyio.run(partial(self._async.analyze_heterogeneity, treatment, outcome, confounders, context=context)))
 
-    def induce_rules(self, feature_cols: Optional[List[str]] = None) -> OptimizationOutput:
-        return cast(OptimizationOutput, anyio.run(self._async.induce_rules, feature_cols))
+    def induce_rules(self, feature_cols: Optional[List[str]] = None, *, context: UserContext) -> OptimizationOutput:
+        return cast(OptimizationOutput, anyio.run(partial(self._async.induce_rules, feature_cols, context=context)))
 
     def run_virtual_trial(
         self,
@@ -578,16 +638,21 @@ class InferenceEngine:
         confounders: List[str],
         n_samples: int = 1000,
         adverse_outcomes: List[str] | None = None,
+        *,
+        context: UserContext,
     ) -> VirtualTrialResult:
         return cast(
             VirtualTrialResult,
             anyio.run(
-                self._async.run_virtual_trial,
-                optimization_result,
-                treatment,
-                outcome,
-                confounders,
-                n_samples,
-                adverse_outcomes,
+                partial(
+                    self._async.run_virtual_trial,
+                    optimization_result,
+                    treatment,
+                    outcome,
+                    confounders,
+                    n_samples,
+                    adverse_outcomes,
+                    context=context,
+                )
             ),
         )

@@ -68,7 +68,7 @@ def generate_synthetic_system(n_samples: int = 100, t_steps: int = 20, noise_std
 
 
 class TestInferenceEngine:
-    def test_pipeline_integration(self) -> None:
+    def test_pipeline_integration(self, mock_user_context) -> None:
         """
         Comprehensive test of the Discover-Represent-Simulate-Act loop.
         """
@@ -84,7 +84,7 @@ class TestInferenceEngine:
         # We also ask to estimate effect of A on B
         result = engine.analyze(
             data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
-        )
+        , context=mock_user_context)
 
         # 4. Validations
 
@@ -121,13 +121,13 @@ class TestInferenceEngine:
         # Estimate effect of B on A (Reverse)
         # We need to pass confounders. Let's use the discovered latents.
         latents = list(result.latents.columns)
-        intervention_result = engine.estimate_effect(treatment="B", outcome="A", confounders=latents)
+        intervention_result = engine.estimate_effect(treatment="B", outcome="A", confounders=latents, context=mock_user_context)
 
         assert intervention_result.intervention == "do(B)"
         assert isinstance(intervention_result.counterfactual_outcome, float)
         assert intervention_result.refutation_status in [RefutationStatus.PASSED, RefutationStatus.FAILED]
 
-    def test_missing_data_logic(self) -> None:
+    def test_missing_data_logic(self, mock_user_context) -> None:
         """
         Test how the engine handles requested variables not in data.
         """
@@ -141,20 +141,20 @@ class TestInferenceEngine:
         # Actually it selects columns first in dynamics.fit.
         # We expect KeyError from pandas, not ValueError.
         with pytest.raises(KeyError):
-            engine.analyze(df, "time", ["X", "Y_missing"])
+            engine.analyze(df, "time", ["X", "Y_missing"], context=mock_user_context)
 
-    def test_engine_state_management(self) -> None:
+    def test_engine_state_management(self, mock_user_context) -> None:
         """
         Test accessing methods before analyze raises errors.
         """
         engine = InferenceEngine()
         with pytest.raises(ValueError, match="Data not available"):
-            engine.estimate_effect("A", "B", [])
+            engine.estimate_effect("A", "B", [], context=mock_user_context)
 
         with pytest.raises(ValueError, match="Pipeline not run"):
             engine.explain_latents()
 
-    def test_analyze_estimation_edge_cases(self) -> None:
+    def test_analyze_estimation_edge_cases(self, mock_user_context) -> None:
         """
         Test edge cases in analyze method's estimation block.
         """
@@ -166,7 +166,7 @@ class TestInferenceEngine:
         # We need to capture logs to verify warning, but for coverage just running it is enough
         engine.analyze(
             data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("MISSING_A", "MISSING_B")
-        )
+        , context=mock_user_context)
 
         # 2. Test explain_latents after fit
         # Now returns valid dataframe with SHAP values
@@ -178,7 +178,7 @@ class TestInferenceEngine:
         assert explanation.shape[0] == 5
         assert set(explanation.columns) == {"A", "B"}
 
-    def test_analyze_estimation_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_analyze_estimation_failure(self, monkeypatch: pytest.MonkeyPatch, mock_user_context) -> None:
         """
         Test exception handling during estimation in analyze pipeline.
         """
@@ -207,4 +207,4 @@ class TestInferenceEngine:
         monkeypatch.setattr("coreason_inference.engine.CausalEstimator", MockEstimator)
 
         # Should not raise, just log error
-        engine.analyze(data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B"))
+        engine.analyze(data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B"), context=mock_user_context)

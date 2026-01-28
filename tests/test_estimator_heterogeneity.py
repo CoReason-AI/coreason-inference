@@ -5,7 +5,7 @@ from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.schema import RefutationStatus
 
 
-def test_estimator_heterogeneity_linear_regression() -> None:
+def test_estimator_heterogeneity_linear_regression(mock_user_context) -> None:
     """
     Test that LinearDML (default) returns None for cate_estimates.
     """
@@ -22,7 +22,7 @@ def test_estimator_heterogeneity_linear_regression() -> None:
     data["Y"] = data["T"] + data["X"] + 0.1 * np.random.normal(0, 1, n)
 
     estimator = CausalEstimator(data)
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="linear")
+    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="linear", context=mock_user_context)
 
     assert result.cate_estimates is None
     assert result.patient_id == "POPULATION_ATE"
@@ -33,7 +33,7 @@ def test_estimator_heterogeneity_linear_regression() -> None:
     # Placebo usually passes (FAILED to reject null of 0 effect on placebo) -> Status PASSED
 
 
-def test_estimator_heterogeneity_causal_forest() -> None:
+def test_estimator_heterogeneity_causal_forest(mock_user_context) -> None:
     """
     Test that CausalForestDML returns cate_estimates and captures heterogeneity.
     """
@@ -57,7 +57,7 @@ def test_estimator_heterogeneity_causal_forest() -> None:
 
     # We treat X and W as confounders/modifiers
     # The updated code sets effect_modifiers = confounders if method="forest"
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="forest")
+    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="forest", context=mock_user_context)
 
     assert result.cate_estimates is not None
     assert len(result.cate_estimates) == n
@@ -80,7 +80,7 @@ def test_estimator_heterogeneity_causal_forest() -> None:
     assert mean_high > mean_low, "Forest failed to identify subgroup difference"
 
 
-def test_estimator_invalid_method() -> None:
+def test_estimator_invalid_method(mock_user_context) -> None:
     """
     Test fallback or error for invalid method.
     Currently implementation might fail or default.
@@ -89,5 +89,5 @@ def test_estimator_invalid_method() -> None:
     """
     data = pd.DataFrame({"T": [0, 1] * 10, "Y": [0, 1] * 10, "X": [0] * 20})
     estimator = CausalEstimator(data)
-    result = estimator.estimate_effect("T", "Y", ["X"], method="invalid")
+    result = estimator.estimate_effect("T", "Y", ["X"], method="invalid", context=mock_user_context)
     assert result.cate_estimates is None  # Should default to linear

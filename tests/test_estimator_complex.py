@@ -17,7 +17,7 @@ import pytest
 from coreason_inference.analysis.estimator import CausalEstimator
 
 
-def test_complex_binary_treatment() -> None:
+def test_complex_binary_treatment(mock_user_context) -> None:
     """
     Complex Case 1: Binary Treatment.
     We generate data where T is binary (0/1).
@@ -40,14 +40,14 @@ def test_complex_binary_treatment() -> None:
         outcome="outcome",
         confounders=["confounder"],
         treatment_is_binary=True,
-    )
+     context=mock_user_context)
 
     # Check recovery of effect
     assert result.counterfactual_outcome == pytest.approx(2.0, abs=0.2)
     assert result.refutation_status == "PASSED"
 
 
-def test_complex_multiple_confounders() -> None:
+def test_complex_multiple_confounders(mock_user_context) -> None:
     """
     Complex Case 2: Multiple Confounders (some irrelevant).
     Y = T + C1 + C2 + 0*C3.
@@ -64,12 +64,12 @@ def test_complex_multiple_confounders() -> None:
     df = pd.DataFrame({"T": T, "Y": Y, "C1": C1, "C2": C2, "C3": C3})
 
     estimator = CausalEstimator(df)
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["C1", "C2", "C3"])
+    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["C1", "C2", "C3"], context=mock_user_context)
 
     assert result.counterfactual_outcome == pytest.approx(1.0, abs=0.2)
 
 
-def test_edge_case_empty_data() -> None:
+def test_edge_case_empty_data(mock_user_context) -> None:
     """
     Edge Case 1: Empty DataFrame.
     """
@@ -77,10 +77,10 @@ def test_edge_case_empty_data() -> None:
     estimator = CausalEstimator(df)
     # Dowhy/Pandas should raise error on empty data or init
     with pytest.raises((ValueError, KeyError)):
-        estimator.estimate_effect("T", "Y", ["C"])
+        estimator.estimate_effect("T", "Y", ["C"], context=mock_user_context)
 
 
-def test_edge_case_collinear_confounders() -> None:
+def test_edge_case_collinear_confounders(mock_user_context) -> None:
     """
     Edge Case 3: Perfectly Collinear Confounders.
     C2 = 2 * C1.
@@ -99,12 +99,12 @@ def test_edge_case_collinear_confounders() -> None:
 
     estimator = CausalEstimator(df)
     # It should not crash. Effect recovery might be stable because T is distinct from C1/C2 block.
-    result = estimator.estimate_effect("T", "Y", ["C1", "C2"])
+    result = estimator.estimate_effect("T", "Y", ["C1", "C2"], context=mock_user_context)
 
     assert result.counterfactual_outcome == pytest.approx(3.0, abs=0.2)
 
 
-def test_refutation_failure_logic(synthetic_data: pd.DataFrame) -> None:
+def test_refutation_failure_logic(synthetic_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test logic when refutation FAILS (p-value < 0.05).
     We mock the refutation result.
@@ -128,7 +128,7 @@ def test_refutation_failure_logic(synthetic_data: pd.DataFrame) -> None:
         }
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("treatment", "outcome", ["confounder"])
+        result = estimator.estimate_effect("treatment", "outcome", ["confounder"], context=mock_user_context)
 
         assert result.refutation_status == "FAILED"
         assert result.counterfactual_outcome is None

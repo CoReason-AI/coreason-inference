@@ -18,7 +18,7 @@ from coreason_inference.analysis.estimator import METHOD_FOREST, CausalEstimator
 from coreason_inference.schema import RefutationStatus
 
 
-def test_refutation_failure_wipes_cate_estimates() -> None:
+def test_refutation_failure_wipes_cate_estimates(mock_user_context) -> None:
     """
     Edge Case: Causal Forest method used.
     If refutation fails, ensure 'cate_estimates' (which are expensive to compute)
@@ -55,14 +55,14 @@ def test_refutation_failure_wipes_cate_estimates() -> None:
         mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.001}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST)
+        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, context=mock_user_context)
 
         assert result.refutation_status == RefutationStatus.FAILED
         assert result.counterfactual_outcome is None
         assert result.cate_estimates is None  # CRITICAL: Must be wiped
 
 
-def test_refutation_failure_invalidates_personalized_inference() -> None:
+def test_refutation_failure_invalidates_personalized_inference(mock_user_context) -> None:
     """
     Edge Case: User asks for a specific patient's effect (target_patient_id).
     If the global model fails refutation, the personalized estimate must also be invalid.
@@ -99,7 +99,7 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
         mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.02}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1")
+        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1", context=mock_user_context)
 
         assert result.patient_id == "P1"
         assert result.refutation_status == RefutationStatus.FAILED
@@ -116,7 +116,7 @@ def test_refutation_failure_invalidates_personalized_inference() -> None:
         (0.05, RefutationStatus.FAILED, False),  # p <= 0.05 -> Null rejected -> Invalid (Standard significance)
     ],
 )
-def test_refutation_boundary_logic(p_value: float, expected_status: str, is_valid: bool) -> None:
+def test_refutation_boundary_logic(p_value: float, expected_status: str, is_valid: bool, mock_user_context) -> None:
     """
     Edge Case: Boundary testing for p-values.
     Note: We trust the `is_statistically_significant` flag from DoWhy mostly,
@@ -144,7 +144,7 @@ def test_refutation_boundary_logic(p_value: float, expected_status: str, is_vali
         mock_refutation.refutation_result = {"is_statistically_significant": is_sig, "p_value": p_value}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("T", "Y", ["X"])
+        result = estimator.estimate_effect("T", "Y", ["X"], context=mock_user_context)
 
         # Expected Status
         # If is_sig is True -> FAILED
@@ -159,7 +159,7 @@ def test_refutation_boundary_logic(p_value: float, expected_status: str, is_vali
             assert result.counterfactual_outcome is None
 
 
-def test_binary_treatment_refutation_failure() -> None:
+def test_binary_treatment_refutation_failure(mock_user_context) -> None:
     """
     Edge Case: Binary Treatment flag shouldn't bypass safety.
     """
@@ -179,7 +179,7 @@ def test_binary_treatment_refutation_failure() -> None:
         mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.01}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True)
+        result = estimator.estimate_effect("T", "Y", ["X"], treatment_is_binary=True, context=mock_user_context)
 
         assert result.refutation_status == RefutationStatus.FAILED
         assert result.counterfactual_outcome is None

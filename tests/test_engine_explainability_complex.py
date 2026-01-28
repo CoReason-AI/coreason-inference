@@ -45,7 +45,7 @@ class TestEngineExplainabilityComplex:
 
         return pd.DataFrame({"time": t, "Feature_A": feature_a, "Feature_B": feature_b, "Feature_Noise": feature_noise})
 
-    def test_meaningful_explanation(self, synthetic_structured_data: pd.DataFrame) -> None:
+    def test_meaningful_explanation(self, synthetic_structured_data: pd.DataFrame, mock_user_context) -> None:
         """
         Verifies that explain_latents correctly identifies features driving the latent space.
         We expect at least one discovered latent to have high SHAP importance for
@@ -57,7 +57,7 @@ class TestEngineExplainabilityComplex:
         # Run pipeline
         engine.analyze(
             data=synthetic_structured_data, time_col="time", variable_cols=["Feature_A", "Feature_B", "Feature_Noise"]
-        )
+        , context=mock_user_context)
 
         # Explain latents
         # This runs the actual SHAP explainer (Kernel or Deep)
@@ -83,7 +83,7 @@ class TestEngineExplainabilityComplex:
         # If this is flaky, we might relax the check, but for now we enforce quality.
         assert structure_found, "SHAP did not identify Feature A/B as more important than Noise for any latent."
 
-    def test_oversampling_behavior(self) -> None:
+    def test_oversampling_behavior(self, mock_user_context) -> None:
         """
         Test that requesting more background samples than available rows works gracefully.
         """
@@ -92,7 +92,7 @@ class TestEngineExplainabilityComplex:
 
         # Inject robust dynamics engine (rk4) to handle random noise data without underflow
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
-        engine.analyze(df, "time", ["X", "Y"])
+        engine.analyze(df, "time", ["X", "Y"], context=mock_user_context)
 
         # Request 100 samples (dataset only has 10)
         explanation = engine.explain_latents(background_samples=100)
@@ -100,7 +100,7 @@ class TestEngineExplainabilityComplex:
         assert not explanation.empty
         assert explanation.shape[1] == 2  # Columns X, Y
 
-    def test_reanalysis_state_consistency(self) -> None:
+    def test_reanalysis_state_consistency(self, mock_user_context) -> None:
         """
         Test that running analyze() multiple times updates the latent feature state correctly.
         """
@@ -112,13 +112,13 @@ class TestEngineExplainabilityComplex:
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
 
         # 1. Analyze A, B
-        engine.analyze(df, "time", ["A", "B"])
+        engine.analyze(df, "time", ["A", "B"], context=mock_user_context)
         expl_1 = engine.explain_latents(background_samples=10)
         assert set(expl_1.columns) == {"A", "B"}
 
         # 2. Re-analyze B, C
         # Should overwrite previous state
-        engine.analyze(df, "time", ["B", "C"])
+        engine.analyze(df, "time", ["B", "C"], context=mock_user_context)
         expl_2 = engine.explain_latents(background_samples=10)
         assert set(expl_2.columns) == {"B", "C"}
         assert "A" not in expl_2.columns

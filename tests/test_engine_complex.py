@@ -17,7 +17,7 @@ from coreason_inference.engine import InferenceEngine
 
 
 class TestInferenceEngineComplex:
-    def test_index_alignment_resilience(self) -> None:
+    def test_index_alignment_resilience(self, mock_user_context) -> None:
         """
         Verify that data augmentation correctly handles non-standard indices.
         If indices are mismatched during concatenation, it would introduce NaNs.
@@ -41,7 +41,7 @@ class TestInferenceEngineComplex:
 
         # Inject rk4 to handle random noise without underflow
         engine = InferenceEngine(dynamics_engine=DynamicsEngine(method="rk4"))
-        result = engine.analyze(data, time_col="time_sec", variable_cols=["A", "B"])
+        result = engine.analyze(data, time_col="time_sec", variable_cols=["A", "B"], context=mock_user_context)
 
         # Check augmented data
         # 1. Should have same index as input
@@ -53,7 +53,7 @@ class TestInferenceEngineComplex:
         # 3. Should contain latent columns
         assert any(c.startswith("Z_") for c in result.augmented_data.columns)
 
-    def test_state_isolation_repeated_calls(self) -> None:
+    def test_state_isolation_repeated_calls(self, mock_user_context) -> None:
         """
         Verify that calling analyze() multiple times resets state correctly.
         """
@@ -64,12 +64,12 @@ class TestInferenceEngineComplex:
         df1 = pd.DataFrame(
             {"t": np.arange(10), "X": np.random.randn(10), "Y": np.random.randn(10), "Z": np.random.randn(10)}
         )
-        result1 = engine.analyze(df1, "t", ["X", "Y", "Z"])
+        result1 = engine.analyze(df1, "t", ["X", "Y", "Z"], context=mock_user_context)
         assert len(result1.graph.nodes) == 3
 
         # Run 2: 2 variables
         df2 = pd.DataFrame({"t": np.arange(10), "A": np.random.randn(10), "B": np.random.randn(10)})
-        result2 = engine.analyze(df2, "t", ["A", "B"])
+        result2 = engine.analyze(df2, "t", ["A", "B"], context=mock_user_context)
 
         # Check Result 2
         assert len(result2.graph.nodes) == 2
@@ -83,7 +83,7 @@ class TestInferenceEngineComplex:
         assert "A" in engine.augmented_data.columns  # type: ignore[union-attr]
         assert "X" not in engine.augmented_data.columns  # type: ignore[union-attr]
 
-    def test_empty_variable_input(self) -> None:
+    def test_empty_variable_input(self, mock_user_context) -> None:
         """
         Test behavior when variable_cols is empty.
         DynamicsEngine might accept it (if implemented robustly) or fail.
@@ -111,9 +111,9 @@ class TestInferenceEngineComplex:
         # This likely fails in PyTorch linear layer (input dim 0).
 
         with pytest.raises(Exception):  # Likely runtime error or validation error # noqa: B017
-            engine.analyze(df, "t", [])
+            engine.analyze(df, "t", [], context=mock_user_context)
 
-    def test_propagation_of_component_errors(self) -> None:
+    def test_propagation_of_component_errors(self, mock_user_context) -> None:
         """
         Test that errors in sub-components propagate up clearly.
         """
@@ -122,4 +122,4 @@ class TestInferenceEngineComplex:
         df = pd.DataFrame({"t": [0, 1, 2], "A": [1.0, np.nan, 3.0]})
 
         with pytest.raises(ValueError, match="NaN"):
-            engine.analyze(df, "t", ["A"])
+            engine.analyze(df, "t", ["A"], context=mock_user_context)

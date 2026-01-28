@@ -29,7 +29,7 @@ def mock_engine() -> InferenceEngine:
     return engine
 
 
-def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
+def test_run_virtual_trial_success(mock_engine: InferenceEngine, mock_user_context) -> None:
     """Test full flow of run_virtual_trial."""
 
     # Setup inputs
@@ -68,7 +68,7 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
         confounders=["X"],
         n_samples=100,
         adverse_outcomes=["Adverse1"],
-    )
+     context=mock_user_context)
 
     # Assertions
     mock_generate.assert_called_once_with(
@@ -77,7 +77,9 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
 
     mock_scan.assert_called_once_with(graph=mock_engine.graph, treatment="T", adverse_outcomes=["Adverse1"])
 
-    mock_simulate.assert_called_once_with(cohort=mock_cohort, treatment="T", outcome="Y", confounders=["X"])
+    mock_simulate.assert_called_once_with(
+        cohort=mock_cohort, treatment="T", outcome="Y", confounders=["X"], context=mock_user_context
+    )
 
     assert isinstance(result, VirtualTrialResult)
     assert result.cohort_size == 2
@@ -85,22 +87,22 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine) -> None:
     assert result.simulation_result == mock_sim_result
 
 
-def test_run_virtual_trial_not_fitted(mock_engine: InferenceEngine) -> None:
+def test_run_virtual_trial_not_fitted(mock_engine: InferenceEngine, mock_user_context) -> None:
     """Test that it raises error if miner not fitted."""
     mock_engine.latent_miner.model = None
 
     with pytest.raises(ValueError, match="Model not fitted"):
-        mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+        mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
 
 
-def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
+def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine, mock_user_context) -> None:
     """Test handling of empty cohort generation."""
     mock_generate = cast(MagicMock, mock_engine.virtual_simulator.generate_synthetic_cohort)
     mock_simulate = cast(MagicMock, mock_engine.virtual_simulator.simulate_trial)
 
     mock_generate.return_value = pd.DataFrame()
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
 
     assert isinstance(result, VirtualTrialResult)
     assert result.cohort_size == 0
@@ -109,7 +111,7 @@ def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine) -> None:
     mock_simulate.assert_not_called()
 
 
-def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine) -> None:
+def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine, mock_user_context) -> None:
     """Test handling of simulation failure within engine."""
     mock_generate = cast(MagicMock, mock_engine.virtual_simulator.generate_synthetic_cohort)
     mock_simulate = cast(MagicMock, mock_engine.virtual_simulator.simulate_trial)
@@ -117,7 +119,7 @@ def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine) -> N
     mock_generate.return_value = pd.DataFrame({"A": [1]})
     mock_simulate.side_effect = Exception("Sim Error")
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[])
+    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
 
     assert isinstance(result, VirtualTrialResult)
     assert result.simulation_result is None
