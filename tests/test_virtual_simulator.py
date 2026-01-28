@@ -202,7 +202,9 @@ def test_scan_safety_path_error(simulator: VirtualSimulator) -> None:
 
 
 @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
-def test_simulate_trial(mock_estimator_cls: MagicMock, simulator: VirtualSimulator) -> None:
+def test_simulate_trial(
+    mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context
+) -> None:
     """Test simulation calls estimator correctly."""
 
     # Mock instance
@@ -217,34 +219,41 @@ def test_simulate_trial(mock_estimator_cls: MagicMock, simulator: VirtualSimulat
 
     cohort = pd.DataFrame({"Drug": [0, 1], "Outcome": [0.1, 0.6], "Conf": [1, 1]})
 
-    result = simulator.simulate_trial(cohort, "Drug", "Outcome", ["Conf"])
+    result = simulator.simulate_trial(cohort, "Drug", "Outcome", ["Conf"], context=mock_user_context)
 
     mock_estimator_cls.assert_called_once_with(cohort)
     mock_instance.estimate_effect.assert_called_once_with(
-        treatment="Drug", outcome="Outcome", confounders=["Conf"], method="forest", num_simulations=5
+        treatment="Drug",
+        outcome="Outcome",
+        confounders=["Conf"],
+        method="forest",
+        num_simulations=5,
+        context=mock_user_context,
     )
     assert result.counterfactual_outcome == 0.5
 
 
-def test_simulate_trial_validation(simulator: VirtualSimulator) -> None:
+def test_simulate_trial_validation(simulator: VirtualSimulator, mock_user_context) -> None:
     """Test validation in simulate_trial."""
     cohort = pd.DataFrame({"Drug": [0, 1]})
 
     # Missing outcome
     with pytest.raises(ValueError, match="Outcome 'Y' not found"):
-        simulator.simulate_trial(cohort, "Drug", "Y", [])
+        simulator.simulate_trial(cohort, "Drug", "Y", [], context=mock_user_context)
 
     # Missing treatment
     with pytest.raises(ValueError, match="Treatment 'Z' not found"):
-        simulator.simulate_trial(cohort, "Z", "Drug", [])
+        simulator.simulate_trial(cohort, "Z", "Drug", [], context=mock_user_context)
 
     # Empty cohort
     with pytest.raises(ValueError, match="empty cohort"):
-        simulator.simulate_trial(pd.DataFrame(), "Drug", "Y", [])
+        simulator.simulate_trial(pd.DataFrame(), "Drug", "Y", [], context=mock_user_context)
 
 
 @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
-def test_simulate_trial_failure(mock_estimator_cls: MagicMock, simulator: VirtualSimulator) -> None:
+def test_simulate_trial_failure(
+    mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context
+) -> None:
     """Test exception propagation from estimator."""
     mock_instance = mock_estimator_cls.return_value
     mock_instance.estimate_effect.side_effect = Exception("Estimator Failed")
@@ -252,7 +261,7 @@ def test_simulate_trial_failure(mock_estimator_cls: MagicMock, simulator: Virtua
     cohort = pd.DataFrame({"Drug": [0, 1], "Outcome": [0, 1]})
 
     with pytest.raises(Exception, match="Estimator Failed"):
-        simulator.simulate_trial(cohort, "Drug", "Outcome", [])
+        simulator.simulate_trial(cohort, "Drug", "Outcome", [], context=mock_user_context)
 
 
 def test_apply_rules_error(simulator: VirtualSimulator) -> None:

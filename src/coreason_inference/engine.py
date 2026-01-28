@@ -616,19 +616,62 @@ class InferenceEngine:
         *,
         context: UserContext,
     ) -> InferenceResult:
-        return cast(InferenceResult, anyio.run(partial(self._async.analyze, data, time_col, variable_cols, estimate_effect_for, context=context)))
+        return cast(
+            InferenceResult,
+            anyio.run(
+                partial(
+                    self._async.analyze,
+                    data,
+                    time_col,
+                    variable_cols,
+                    estimate_effect_for,
+                    context=context,
+                )
+            ),
+        )
 
     def explain_latents(self, background_samples: int = 100) -> pd.DataFrame:
         return cast(pd.DataFrame, anyio.run(self._async.explain_latents, background_samples))
 
-    def estimate_effect(self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext) -> InterventionResult:
-        return cast(InterventionResult, anyio.run(partial(self._async.estimate_effect, treatment, outcome, confounders, context=context)))
+    def estimate_effect(
+        self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext
+    ) -> InterventionResult:
+        return cast(
+            InterventionResult,
+            anyio.run(
+                partial(
+                    self._async.estimate_effect,
+                    treatment,
+                    outcome,
+                    confounders,
+                    context=context,
+                )
+            ),
+        )
 
-    def analyze_heterogeneity(self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext) -> InterventionResult:
-        return cast(InterventionResult, anyio.run(partial(self._async.analyze_heterogeneity, treatment, outcome, confounders, context=context)))
+    def analyze_heterogeneity(
+        self, treatment: str, outcome: str, confounders: List[str], *, context: UserContext
+    ) -> InterventionResult:
+        return cast(
+            InterventionResult,
+            anyio.run(
+                partial(
+                    self._async.analyze_heterogeneity,
+                    treatment,
+                    outcome,
+                    confounders,
+                    context=context,
+                )
+            ),
+        )
 
-    def induce_rules(self, feature_cols: Optional[List[str]] = None, *, context: UserContext) -> OptimizationOutput:
-        return cast(OptimizationOutput, anyio.run(partial(self._async.induce_rules, feature_cols, context=context)))
+    def induce_rules(
+        self, feature_cols: Optional[List[str]] = None, *, context: UserContext
+    ) -> OptimizationOutput:
+        return cast(
+            OptimizationOutput,
+            anyio.run(partial(self._async.induce_rules, feature_cols, context=context)),
+        )
 
     def run_virtual_trial(
         self,
