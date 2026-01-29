@@ -56,8 +56,11 @@ class TestEngineExplainabilityComplex:
 
         # Run pipeline
         engine.analyze(
-            data=synthetic_structured_data, time_col="time", variable_cols=["Feature_A", "Feature_B", "Feature_Noise"]
-        , context=mock_user_context)
+            data=synthetic_structured_data,
+            time_col="time",
+            variable_cols=["Feature_A", "Feature_B", "Feature_Noise"],
+            context=mock_user_context,
+        )
 
         # Explain latents
         # This runs the actual SHAP explainer (Kernel or Deep)

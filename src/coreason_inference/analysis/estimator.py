@@ -12,10 +12,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from coreason_identity.models import UserContext
 from dowhy import CausalModel
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from coreason_identity.models import UserContext
 from coreason_inference.schema import InterventionResult, RefutationStatus
 from coreason_inference.utils.logger import logger
 

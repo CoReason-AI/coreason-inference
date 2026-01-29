@@ -40,7 +40,8 @@ def test_complex_binary_treatment(mock_user_context) -> None:
         outcome="outcome",
         confounders=["confounder"],
         treatment_is_binary=True,
-     context=mock_user_context)
+        context=mock_user_context,
+    )
 
     # Check recovery of effect
     assert result.counterfactual_outcome == pytest.approx(2.0, abs=0.2)
@@ -64,7 +65,9 @@ def test_complex_multiple_confounders(mock_user_context) -> None:
     df = pd.DataFrame({"T": T, "Y": Y, "C1": C1, "C2": C2, "C3": C3})
 
     estimator = CausalEstimator(df)
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["C1", "C2", "C3"], context=mock_user_context)
+    result = estimator.estimate_effect(
+        treatment="T", outcome="Y", confounders=["C1", "C2", "C3"], context=mock_user_context
+    )
 
     assert result.counterfactual_outcome == pytest.approx(1.0, abs=0.2)
 

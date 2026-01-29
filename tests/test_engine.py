@@ -83,8 +83,12 @@ class TestInferenceEngine:
         # 3. Run Pipeline
         # We also ask to estimate effect of A on B
         result = engine.analyze(
-            data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
-        , context=mock_user_context)
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            estimate_effect_for=("A", "B"),
+            context=mock_user_context,
+        )
 
         # 4. Validations
 
@@ -121,7 +125,9 @@ class TestInferenceEngine:
         # Estimate effect of B on A (Reverse)
         # We need to pass confounders. Let's use the discovered latents.
         latents = list(result.latents.columns)
-        intervention_result = engine.estimate_effect(treatment="B", outcome="A", confounders=latents, context=mock_user_context)
+        intervention_result = engine.estimate_effect(
+            treatment="B", outcome="A", confounders=latents, context=mock_user_context
+        )
 
         assert intervention_result.intervention == "do(B)"
         assert isinstance(intervention_result.counterfactual_outcome, float)
@@ -165,8 +171,12 @@ class TestInferenceEngine:
         # 1. Test missing treatment/outcome columns (Warning path)
         # We need to capture logs to verify warning, but for coverage just running it is enough
         engine.analyze(
-            data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("MISSING_A", "MISSING_B")
-        , context=mock_user_context)
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            estimate_effect_for=("MISSING_A", "MISSING_B"),
+            context=mock_user_context,
+        )
 
         # 2. Test explain_latents after fit
         # Now returns valid dataframe with SHAP values
@@ -207,4 +217,10 @@ class TestInferenceEngine:
         monkeypatch.setattr("coreason_inference.engine.CausalEstimator", MockEstimator)
 
         # Should not raise, just log error
-        engine.analyze(data=input_df, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B"), context=mock_user_context)
+        engine.analyze(
+            data=input_df,
+            time_col="time",
+            variable_cols=["A", "B"],
+            estimate_effect_for=("A", "B"),
+            context=mock_user_context,
+        )

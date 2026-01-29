@@ -22,7 +22,9 @@ def test_estimator_heterogeneity_linear_regression(mock_user_context) -> None:
     data["Y"] = data["T"] + data["X"] + 0.1 * np.random.normal(0, 1, n)
 
     estimator = CausalEstimator(data)
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="linear", context=mock_user_context)
+    result = estimator.estimate_effect(
+        treatment="T", outcome="Y", confounders=["X", "W"], method="linear", context=mock_user_context
+    )
 
     assert result.cate_estimates is None
     assert result.patient_id == "POPULATION_ATE"
@@ -57,7 +59,9 @@ def test_estimator_heterogeneity_causal_forest(mock_user_context) -> None:
 
     # We treat X and W as confounders/modifiers
     # The updated code sets effect_modifiers = confounders if method="forest"
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X", "W"], method="forest", context=mock_user_context)
+    result = estimator.estimate_effect(
+        treatment="T", outcome="Y", confounders=["X", "W"], method="forest", context=mock_user_context
+    )
 
     assert result.cate_estimates is not None
     assert len(result.cate_estimates) == n

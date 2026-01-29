@@ -68,7 +68,8 @@ def test_run_virtual_trial_success(mock_engine: InferenceEngine, mock_user_conte
         confounders=["X"],
         n_samples=100,
         adverse_outcomes=["Adverse1"],
-     context=mock_user_context)
+        context=mock_user_context,
+    )
 
     # Assertions
     mock_generate.assert_called_once_with(
@@ -92,7 +93,9 @@ def test_run_virtual_trial_not_fitted(mock_engine: InferenceEngine, mock_user_co
     mock_engine.latent_miner.model = None
 
     with pytest.raises(ValueError, match="Model not fitted"):
-        mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
+        mock_engine.run_virtual_trial(
+            optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context
+        )
 
 
 def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine, mock_user_context) -> None:
@@ -102,7 +105,9 @@ def test_run_virtual_trial_empty_cohort(mock_engine: InferenceEngine, mock_user_
 
     mock_generate.return_value = pd.DataFrame()
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
+    result = mock_engine.run_virtual_trial(
+        optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context
+    )
 
     assert isinstance(result, VirtualTrialResult)
     assert result.cohort_size == 0
@@ -119,7 +124,9 @@ def test_run_virtual_trial_simulation_failure(mock_engine: InferenceEngine, mock
     mock_generate.return_value = pd.DataFrame({"A": [1]})
     mock_simulate.side_effect = Exception("Sim Error")
 
-    result = mock_engine.run_virtual_trial(optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context)
+    result = mock_engine.run_virtual_trial(
+        optimization_result=MagicMock(), treatment="T", outcome="Y", confounders=[], context=mock_user_context
+    )
 
     assert isinstance(result, VirtualTrialResult)
     assert result.simulation_result is None

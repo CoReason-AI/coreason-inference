@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 from causallearn.graph.Endpoint import Endpoint
 from causallearn.search.ConstraintBased.PC import pc
-
 from coreason_identity.models import UserContext
+
 from coreason_inference.schema import ExperimentProposal
 from coreason_inference.utils.logger import logger
 

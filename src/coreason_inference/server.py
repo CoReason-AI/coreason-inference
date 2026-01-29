@@ -3,13 +3,13 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from coreason_identity.models import UserContext
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from coreason_identity.models import UserContext
-from coreason_inference.engine import InferenceEngineAsync
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
+from coreason_inference.engine import InferenceEngineAsync
 from coreason_inference.utils.logger import logger
 
 # Global model store
@@ -77,7 +77,8 @@ class SimulateVirtualResponse(BaseModel):
 
 @app.post("/analyze/causal", response_model=AnalyzeCausalResponse)  # type: ignore
 async def analyze_causal(
-    request: AnalyzeCausalRequest, context: UserContext = Depends(get_user_context)
+    request: AnalyzeCausalRequest,
+    context: UserContext = Depends(get_user_context),  # noqa: B008
 ) -> AnalyzeCausalResponse:
     """Performs causal discovery on the provided dataset."""
     if not request.dataset:
@@ -100,12 +101,7 @@ async def analyze_causal(
         # We delegate to InferenceEngineAsync to enforce identity and unified pipeline
         # and support async execution within FastAPI
         async with InferenceEngineAsync() as engine:
-            result = await engine.analyze(
-                data=df,
-                time_col=time_col,
-                variable_cols=request.variables,
-                context=context
-            )
+            result = await engine.analyze(data=df, time_col=time_col, variable_cols=request.variables, context=context)
 
             # Map InferenceResult to AnalyzeCausalResponse
             graph_dict = result.graph.model_dump()
@@ -120,7 +116,8 @@ async def analyze_causal(
 
 @app.post("/simulate/virtual", response_model=SimulateVirtualResponse)  # type: ignore
 async def simulate_virtual(
-    request: SimulateVirtualRequest, context: UserContext = Depends(get_user_context)
+    request: SimulateVirtualRequest,
+    context: UserContext = Depends(get_user_context),  # noqa: B008
 ) -> SimulateVirtualResponse:
     """Simulates a virtual trajectory given an initial state and intervention."""
     logger.info("Executing virtual simulation", user_id=context.sub)

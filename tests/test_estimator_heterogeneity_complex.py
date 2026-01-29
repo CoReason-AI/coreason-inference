@@ -38,8 +38,13 @@ def test_heterogeneity_binary_treatment_complex(mock_user_context) -> None:
 
     estimator = CausalEstimator(data)
     result = estimator.estimate_effect(
-        treatment="T", outcome="Y", confounders=["Age", "Biomarker", "Noise"], treatment_is_binary=True, method="forest"
-    , context=mock_user_context)
+        treatment="T",
+        outcome="Y",
+        confounders=["Age", "Biomarker", "Noise"],
+        treatment_is_binary=True,
+        method="forest",
+        context=mock_user_context,
+    )
 
     assert result.cate_estimates is not None
     estimated_cate = np.array(result.cate_estimates)
@@ -79,7 +84,8 @@ def test_heterogeneity_empty_confounders_error(mock_user_context) -> None:
             outcome="Y",
             confounders=[],  # Empty
             method="forest",
-         context=mock_user_context)
+            context=mock_user_context,
+        )
 
 
 def test_heterogeneity_small_data(mock_user_context) -> None:
@@ -97,7 +103,9 @@ def test_heterogeneity_small_data(mock_user_context) -> None:
 
     # Should run without crashing, even if results are junk
     try:
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], method="forest", context=mock_user_context)
+        result = estimator.estimate_effect(
+            treatment="T", outcome="Y", confounders=["X"], method="forest", context=mock_user_context
+        )
         # Result might be valid object
         assert result.refutation_status is not None
         assert result.cate_estimates is not None
@@ -125,7 +133,9 @@ def test_heterogeneity_collinear_features(mock_user_context) -> None:
 
     estimator = CausalEstimator(data)
 
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest", context=mock_user_context)
+    result = estimator.estimate_effect(
+        treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest", context=mock_user_context
+    )
 
     assert result.cate_estimates is not None
     # Forest handles collinearity well (just picks one split).

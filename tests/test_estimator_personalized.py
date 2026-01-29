@@ -38,7 +38,8 @@ def test_estimator_personalized_inference(mock_user_context) -> None:
         patient_id_col="patient_id",
         method=METHOD_FOREST,
         target_patient_id=target_pid,
-     context=mock_user_context)
+        context=mock_user_context,
+    )
 
     assert result.patient_id == target_pid
     # Forest estimate should be positive and significant (e.g. > 5.0)
@@ -56,7 +57,8 @@ def test_estimator_personalized_inference(mock_user_context) -> None:
         patient_id_col="patient_id",
         method=METHOD_FOREST,
         target_patient_id=target_pid_2,
-     context=mock_user_context)
+        context=mock_user_context,
+    )
 
     assert result_2.patient_id == target_pid_2
     assert result_2.counterfactual_outcome is not None
@@ -79,4 +81,6 @@ def test_estimator_personalized_inference_missing_id(mock_user_context) -> None:
     estimator = CausalEstimator(data)
 
     with pytest.raises(ValueError, match="not found"):
-        estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="C", context=mock_user_context)
+        estimator.estimate_effect(
+            "T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="C", context=mock_user_context
+        )

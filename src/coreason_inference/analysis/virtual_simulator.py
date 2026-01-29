@@ -8,9 +8,9 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
+from coreason_identity.models import UserContext
 from torchdiffeq import odeint
 
-from coreason_identity.models import UserContext
 from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.analysis.latent import LatentMiner
 from coreason_inference.schema import CausalGraph, InterventionResult, ProtocolRule
@@ -203,7 +203,7 @@ class VirtualSimulator:
                 confounders=confounders,
                 method=method,
                 num_simulations=5,  # Reduced for simulation speed, or make configurable
-                context=context
+                context=context,
             )
             return result
         except Exception as e:

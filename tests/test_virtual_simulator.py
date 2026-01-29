@@ -202,9 +202,7 @@ def test_scan_safety_path_error(simulator: VirtualSimulator) -> None:
 
 
 @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
-def test_simulate_trial(
-    mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context
-) -> None:
+def test_simulate_trial(mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context) -> None:
     """Test simulation calls estimator correctly."""
 
     # Mock instance
@@ -251,9 +249,7 @@ def test_simulate_trial_validation(simulator: VirtualSimulator, mock_user_contex
 
 
 @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
-def test_simulate_trial_failure(
-    mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context
-) -> None:
+def test_simulate_trial_failure(mock_estimator_cls: MagicMock, simulator: VirtualSimulator, mock_user_context) -> None:
     """Test exception propagation from estimator."""
     mock_instance = mock_estimator_cls.return_value
     mock_instance.estimate_effect.side_effect = Exception("Estimator Failed")

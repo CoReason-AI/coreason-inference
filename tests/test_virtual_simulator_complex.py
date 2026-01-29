@@ -142,7 +142,9 @@ class TestComplexVirtualSimulator:
         assert mock_miner.generate.call_count == 3
 
     @patch("coreason_inference.analysis.virtual_simulator.CausalEstimator")
-    def test_simulate_trial_constant_features(self, mock_est_cls: MagicMock, simulator: VirtualSimulator) -> None:
+    def test_simulate_trial_constant_features(
+        self, mock_est_cls: MagicMock, simulator: VirtualSimulator, mock_user_context
+    ) -> None:
         """
         Tests behavior when rules filter data such that a confounder becomes constant.
         Uses mocks to simulate estimator failure behavior in this edge case.
@@ -162,4 +164,4 @@ class TestComplexVirtualSimulator:
         mock_est_instance.estimate_effect.side_effect = ValueError("Constant column")
 
         with pytest.raises(ValueError, match="Constant column"):
-            simulator.simulate_trial(cohort, "Treatment", "Outcome", ["Gender"])
+            simulator.simulate_trial(cohort, "Treatment", "Outcome", ["Gender"], context=mock_user_context)

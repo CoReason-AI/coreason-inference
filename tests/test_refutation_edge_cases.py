@@ -99,7 +99,9 @@ def test_refutation_failure_invalidates_personalized_inference(mock_user_context
         mock_refutation.refutation_result = {"is_statistically_significant": True, "p_value": 0.02}
         mock_instance.refute_estimate.return_value = mock_refutation
 
-        result = estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1", context=mock_user_context)
+        result = estimator.estimate_effect(
+            "T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="P1", context=mock_user_context
+        )
 
         assert result.patient_id == "P1"
         assert result.refutation_status == RefutationStatus.FAILED

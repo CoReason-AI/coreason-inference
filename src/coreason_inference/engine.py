@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional, cast
 import anyio
 import httpx
 import pandas as pd
+from coreason_identity.models import UserContext
 from pydantic import BaseModel, ConfigDict, Field
 
-from coreason_identity.models import UserContext
 from coreason_inference.analysis.active_scientist import ActiveScientist
 from coreason_inference.analysis.dynamics import DynamicsEngine
 from coreason_inference.analysis.estimator import CausalEstimator
@@ -665,9 +665,7 @@ class InferenceEngine:
             ),
         )
 
-    def induce_rules(
-        self, feature_cols: Optional[List[str]] = None, *, context: UserContext
-    ) -> OptimizationOutput:
+    def induce_rules(self, feature_cols: Optional[List[str]] = None, *, context: UserContext) -> OptimizationOutput:
         return cast(
             OptimizationOutput,
             anyio.run(partial(self._async.induce_rules, feature_cols, context=context)),

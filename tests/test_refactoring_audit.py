@@ -39,7 +39,7 @@ def test_virtual_simulator_operator_map() -> None:
     assert len(res_bad) == 5  # Should ignore bad rule
 
 
-def test_inference_engine_dependency_injection() -> None:
+def test_inference_engine_dependency_injection(mock_user_context) -> None:
     """
     Verify we can inject custom components into InferenceEngine.
     This improves testability and decoupling.
@@ -65,7 +65,7 @@ def test_inference_engine_dependency_injection() -> None:
 
     # Test analyze call propagates to mock
     df = pd.DataFrame({"t": [0, 1], "A": [1, 2]})
-    engine.analyze(df, "t", ["A"])
+    engine.analyze(df, "t", ["A"], context=mock_user_context)
 
     mock_dynamics.fit.assert_called_once()
     mock_dynamics.discover_loops.assert_called_once()

@@ -1,14 +1,12 @@
-from typing import Any
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 from coreason_inference.analysis.virtual_simulator import VirtualSimulator
-from coreason_inference.schema import CausalGraph, CausalNode
 from coreason_inference.engine import InferenceResult
+from coreason_inference.schema import CausalGraph, CausalNode
 from coreason_inference.server import app
 
 
@@ -17,18 +15,13 @@ def mock_inference_result():
     graph = CausalGraph(
         nodes=[
             CausalNode(id="X", codex_concept_id=1, is_latent=False),
-            CausalNode(id="Y", codex_concept_id=2, is_latent=False)
+            CausalNode(id="Y", codex_concept_id=2, is_latent=False),
         ],
         edges=[("X", "Y")],
         loop_dynamics=[],
-        stability_score=0.95
+        stability_score=0.95,
     )
-    return InferenceResult(
-        graph=graph,
-        latents=pd.DataFrame(),
-        proposals=[],
-        augmented_data=pd.DataFrame()
-    )
+    return InferenceResult(graph=graph, latents=pd.DataFrame(), proposals=[], augmented_data=pd.DataFrame())
 
 
 def test_analyze_causal_success(mock_inference_result) -> None:
@@ -46,9 +39,7 @@ def test_analyze_causal_success(mock_inference_result) -> None:
         with TestClient(app) as client:
             payload = {"dataset": data, "variables": ["X", "Y"], "method": "dynamics"}
             headers = {"X-User-Sub": "test", "X-User-Email": "t@e.com"}
-            response = client.post(
-                "/analyze/causal", json=payload, headers=headers
-            )
+            response = client.post("/analyze/causal", json=payload, headers=headers)
             assert response.status_code == 200
             json_resp = response.json()
             assert "graph" in json_resp
@@ -99,9 +90,7 @@ def test_simulate_virtual() -> None:
         initial_state = {"X": 0.0, "Y": 1.0}
         payload = {"initial_state": initial_state, "steps": 5, "intervention": {"X": 0.5}}
         headers = {"X-User-Sub": "test", "X-User-Email": "t@e.com"}
-        response = client.post(
-            "/simulate/virtual", json=payload, headers=headers
-        )
+        response = client.post("/simulate/virtual", json=payload, headers=headers)
         if response.status_code != 200:
             print(response.json())
         assert response.status_code == 200
@@ -133,6 +122,7 @@ def test_simulate_virtual_exception() -> None:
         instance.simulate_trajectory.side_effect = Exception("Unexpected error")
 
         from coreason_inference.server import models
+
         models["default_dynamics"] = MagicMock()
 
         with TestClient(app) as client:
@@ -149,6 +139,7 @@ def test_lifespan_exception() -> None:
         MockEngine.side_effect = Exception("Startup failed")
 
         import asyncio
+
         from coreason_inference.server import lifespan
 
         async def run_lifespan() -> None:
@@ -162,6 +153,7 @@ def test_lifespan_exception() -> None:
 # Note: These test VirtualSimulator directly, not via server.
 # `simulate_trajectory` was NOT updated to require context.
 # `simulate_trial` WAS updated.
+
 
 def test_simulate_trajectory_no_model() -> None:
     sim = VirtualSimulator()

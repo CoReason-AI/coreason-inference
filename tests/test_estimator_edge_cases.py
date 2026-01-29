@@ -77,8 +77,13 @@ def test_cate_extraction_failure_fallback(sample_data: pd.DataFrame, mock_user_c
 
         # Request personalized inference
         result = estimator.estimate_effect(
-            treatment="T", outcome="Y", confounders=["X"], method=METHOD_FOREST, target_patient_id="P0"
-        , context=mock_user_context)
+            treatment="T",
+            outcome="Y",
+            confounders=["X"],
+            method=METHOD_FOREST,
+            target_patient_id="P0",
+            context=mock_user_context,
+        )
 
         # Should fall back to ATE
         assert result.patient_id == "POPULATION_ATE"
@@ -167,4 +172,6 @@ def test_empty_confounders_forest_error(sample_data: pd.DataFrame, mock_user_con
         mock_model.estimate_effect.side_effect = ValueError("EconML Error: X is empty")
 
         with pytest.raises(ValueError, match="EconML Error"):
-            estimator.estimate_effect(treatment="T", outcome="Y", confounders=[], method=METHOD_FOREST, context=mock_user_context)
+            estimator.estimate_effect(
+                treatment="T", outcome="Y", confounders=[], method=METHOD_FOREST, context=mock_user_context
+            )

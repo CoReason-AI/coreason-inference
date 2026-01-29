@@ -39,8 +39,8 @@ class TestEngineExplainability:
             engine.explain_latents()
 
     def test_explain_latents_flow(
-        self, engine: InferenceEngine, mock_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch
-    , mock_user_context) -> None:
+        self, engine: InferenceEngine, mock_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch, mock_user_context
+    ) -> None:
         """
         Test the successful flow of explain_latents.
         Mocks LatentMiner to avoid expensive SHAP calculation.
@@ -75,7 +75,9 @@ class TestEngineExplainability:
         monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
 
         # Run analyze
-        engine.analyze(data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"], context=mock_user_context)
+        engine.analyze(
+            data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"], context=mock_user_context
+        )
 
         # Call explain_latents
         explanation = engine.explain_latents(background_samples=50)
@@ -116,7 +118,9 @@ class TestEngineExplainability:
         with pytest.raises(ValueError, match="Data not available"):
             engine.explain_latents()
 
-    def test_explain_latents_column_mismatch(self, engine: InferenceEngine, mock_data: pd.DataFrame, mock_user_context) -> None:
+    def test_explain_latents_column_mismatch(
+        self, engine: InferenceEngine, mock_data: pd.DataFrame, mock_user_context
+    ) -> None:
         """Test error when stored columns are missing from augmented data."""
         # Set up state manually
         engine.latent_miner.model = MagicMock()

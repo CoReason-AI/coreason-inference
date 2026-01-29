@@ -100,8 +100,12 @@ async def test_analyze_pipeline_mocked(mock_user_context) -> None:
         )
 
         result = await engine.analyze(
-            data=data, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
-        , context=mock_user_context)
+            data=data,
+            time_col="time",
+            variable_cols=["A", "B"],
+            estimate_effect_for=("A", "B"),
+            context=mock_user_context,
+        )
 
         # Assertions
         assert isinstance(result, InferenceResult)
@@ -193,8 +197,12 @@ async def test_error_handling_in_virtual_trial(mock_user_context) -> None:
         patch.object(engine.virtual_simulator, "simulate_trial", side_effect=Exception("Sim Boom")),
     ):
         result = await engine.run_virtual_trial(
-            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0), "T", "Y", []
-        , context=mock_user_context)
+            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0),
+            "T",
+            "Y",
+            [],
+            context=mock_user_context,
+        )
 
         assert result.simulation_result is None
         assert result.cohort_size == 1
