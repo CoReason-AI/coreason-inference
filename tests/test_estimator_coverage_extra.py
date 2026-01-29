@@ -5,7 +5,7 @@ import pytest
 from coreason_inference.analysis.estimator import METHOD_FOREST, CausalEstimator
 
 
-def test_estimator_personalized_inference_missing_column() -> None:
+def test_estimator_personalized_inference_missing_column(mock_user_context) -> None:
     """
     Test error when patient_id_col is missing.
     """
@@ -16,4 +16,12 @@ def test_estimator_personalized_inference_missing_column() -> None:
     estimator = CausalEstimator(data)
 
     with pytest.raises(ValueError, match="Patient ID column 'pid' not found"):
-        estimator.estimate_effect("T", "Y", ["X"], patient_id_col="pid", method=METHOD_FOREST, target_patient_id="P1")
+        estimator.estimate_effect(
+            "T",
+            "Y",
+            ["X"],
+            patient_id_col="pid",
+            method=METHOD_FOREST,
+            target_patient_id="P1",
+            context=mock_user_context,
+        )

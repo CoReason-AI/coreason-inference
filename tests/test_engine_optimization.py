@@ -19,7 +19,7 @@ def mock_engine_with_data() -> InferenceEngine:
     return engine
 
 
-def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -> None:
+def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine, mock_user_context) -> None:
     """Test successful heterogeneity analysis and state update."""
 
     # Mock CausalEstimator to return CATEs
@@ -36,11 +36,11 @@ def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -
         instance = MockEstimator.return_value
         instance.estimate_effect.return_value = mock_result
 
-        result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1", "X2"])
+        result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1", "X2"], context=mock_user_context)
 
         # Verify method called correctly
         instance.estimate_effect.assert_called_once_with(
-            treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest"
+            treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest", context=mock_user_context
         )
 
         # Verify result
@@ -57,16 +57,16 @@ def test_analyze_heterogeneity_success(mock_engine_with_data: InferenceEngine) -
         assert mock_engine_with_data._last_analysis_meta == {"treatment": "T", "outcome": "Y"}
 
 
-def test_analyze_heterogeneity_no_data() -> None:
+def test_analyze_heterogeneity_no_data(mock_user_context) -> None:
     """Test error when data is missing."""
     engine = InferenceEngine()
     # augmented_data is None
 
     with pytest.raises(ValueError, match="Data not available"):
-        engine.analyze_heterogeneity("T", "Y", ["X"])
+        engine.analyze_heterogeneity("T", "Y", ["X"], context=mock_user_context)
 
 
-def test_analyze_heterogeneity_no_cate_returned(mock_engine_with_data: InferenceEngine) -> None:
+def test_analyze_heterogeneity_no_cate_returned(mock_engine_with_data: InferenceEngine, mock_user_context) -> None:
     """Test handling when CausalEstimator returns no CATE estimates."""
 
     # Mock result with None cate_estimates
@@ -83,13 +83,13 @@ def test_analyze_heterogeneity_no_cate_returned(mock_engine_with_data: Inference
         instance = MockEstimator.return_value
         instance.estimate_effect.return_value = mock_result
 
-        result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1"])
+        result = mock_engine_with_data.analyze_heterogeneity("T", "Y", ["X1"], context=mock_user_context)
 
         assert result == mock_result
         assert mock_engine_with_data.cate_estimates is None
 
 
-def test_induce_rules_success(mock_engine_with_data: InferenceEngine) -> None:
+def test_induce_rules_success(mock_engine_with_data: InferenceEngine, mock_user_context) -> None:
     """Test successful rule induction."""
 
     # Setup state
@@ -107,7 +107,7 @@ def test_induce_rules_success(mock_engine_with_data: InferenceEngine) -> None:
     mock_engine_with_data.rule_inductor = MagicMock()
     mock_engine_with_data.rule_inductor.induce_rules_with_data.return_value = mock_optimization_output
 
-    result = mock_engine_with_data.induce_rules(feature_cols=["X1"])
+    result = mock_engine_with_data.induce_rules(feature_cols=["X1"], context=mock_user_context)
 
     # Verify calls
     # Features passed should be just X1
@@ -118,7 +118,7 @@ def test_induce_rules_success(mock_engine_with_data: InferenceEngine) -> None:
     assert result == mock_optimization_output
 
 
-def test_induce_rules_auto_features(mock_engine_with_data: InferenceEngine) -> None:
+def test_induce_rules_auto_features(mock_engine_with_data: InferenceEngine, mock_user_context) -> None:
     """Test rule induction with automatic feature selection."""
 
     mock_engine_with_data.cate_estimates = pd.Series([0.1, 0.9, 0.2, 0.8])
@@ -127,7 +127,7 @@ def test_induce_rules_auto_features(mock_engine_with_data: InferenceEngine) -> N
         new_criteria=[], original_pos=0, optimized_pos=0, safety_flags=[]
     )
 
-    mock_engine_with_data.induce_rules(feature_cols=None)
+    mock_engine_with_data.induce_rules(feature_cols=None, context=mock_user_context)
 
     # Should use all numeric columns (X1, X2, T, Y) since meta is empty
     args, _ = mock_engine_with_data.rule_inductor.fit.call_args
@@ -135,7 +135,7 @@ def test_induce_rules_auto_features(mock_engine_with_data: InferenceEngine) -> N
     assert set(features_arg.columns) == {"X1", "X2", "T", "Y"}
 
 
-def test_induce_rules_excludes_leakage(mock_engine_with_data: InferenceEngine) -> None:
+def test_induce_rules_excludes_leakage(mock_engine_with_data: InferenceEngine, mock_user_context) -> None:
     """Test that treatment and outcome are excluded from features during rule induction."""
 
     # Setup state
@@ -147,7 +147,7 @@ def test_induce_rules_excludes_leakage(mock_engine_with_data: InferenceEngine) -
         new_criteria=[], original_pos=0, optimized_pos=0, safety_flags=[]
     )
 
-    mock_engine_with_data.induce_rules(feature_cols=None)
+    mock_engine_with_data.induce_rules(feature_cols=None, context=mock_user_context)
 
     # Verify T and Y are excluded
     args, _ = mock_engine_with_data.rule_inductor.fit.call_args
@@ -157,16 +157,16 @@ def test_induce_rules_excludes_leakage(mock_engine_with_data: InferenceEngine) -
     assert set(features_arg.columns) == {"X1", "X2"}
 
 
-def test_induce_rules_no_cate() -> None:
+def test_induce_rules_no_cate(mock_user_context) -> None:
     """Test error when CATEs are missing."""
     engine = InferenceEngine()
     engine.augmented_data = pd.DataFrame({"A": [1]})
 
     with pytest.raises(ValueError, match="No CATE estimates"):
-        engine.induce_rules()
+        engine.induce_rules(context=mock_user_context)
 
 
-def test_induce_rules_data_missing_integrity() -> None:
+def test_induce_rules_data_missing_integrity(mock_user_context) -> None:
     """Test error when augmented_data is missing but cate_estimates exists."""
     engine = InferenceEngine()
     # Manually inject CATE to bypass first check
@@ -174,4 +174,4 @@ def test_induce_rules_data_missing_integrity() -> None:
     # augmented_data is None
 
     with pytest.raises(ValueError, match="Data not available"):
-        engine.induce_rules()
+        engine.induce_rules(context=mock_user_context)

@@ -7,7 +7,7 @@ from causallearn.graph.Endpoint import Endpoint
 from coreason_inference.analysis.active_scientist import ActiveScientist
 
 
-def test_max_degree_heuristic_star_graph() -> None:
+def test_max_degree_heuristic_star_graph(mock_user_context) -> None:
     """
     Test that the Max-Degree Heuristic correctly identifies the 'Hub' in a star graph.
 
@@ -37,7 +37,7 @@ def test_max_degree_heuristic_star_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
 
     assert len(proposals) == 1
     proposal = proposals[0]
@@ -53,7 +53,7 @@ def test_max_degree_heuristic_star_graph() -> None:
     assert "4" in proposal.rationale  # The degree count
 
 
-def test_max_degree_heuristic_chain_graph() -> None:
+def test_max_degree_heuristic_chain_graph(mock_user_context) -> None:
     """
     Test that the Max-Degree Heuristic identifies the central node in a chain.
 
@@ -82,7 +82,7 @@ def test_max_degree_heuristic_chain_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
 
     assert len(proposals) == 1
     proposal = proposals[0]
@@ -91,7 +91,7 @@ def test_max_degree_heuristic_chain_graph() -> None:
     assert "2" in proposal.rationale
 
 
-def test_max_degree_heuristic_fully_oriented() -> None:
+def test_max_degree_heuristic_fully_oriented(mock_user_context) -> None:
     """
     Test that no proposals are generated for a fully oriented graph (DAG).
     """
@@ -111,11 +111,11 @@ def test_max_degree_heuristic_fully_oriented() -> None:
     scientist.cpdag = adj
     scientist.labels = ["A", "B"]
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert len(proposals) == 0
 
 
-def test_tie_breaking_square_graph() -> None:
+def test_tie_breaking_square_graph(mock_user_context) -> None:
     """
     Test tie-breaking in a square graph where all nodes have equal degree.
     A -- B
@@ -146,7 +146,7 @@ def test_tie_breaking_square_graph() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert len(proposals) == 1
     # Should pick first one in list that has max degree (2).
     # np.argmax returns first occurrence of max.
@@ -157,7 +157,7 @@ def test_tie_breaking_square_graph() -> None:
     assert "2" in proposals[0].rationale
 
 
-def test_disconnected_components() -> None:
+def test_disconnected_components(mock_user_context) -> None:
     """
     Test graph with disconnected components.
     Comp 1: A -- B (Degrees: 1, 1)
@@ -187,7 +187,7 @@ def test_disconnected_components() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert len(proposals) == 1
 
     # Expect C (index 2) as it is the first with degree 2.
@@ -195,7 +195,7 @@ def test_disconnected_components() -> None:
     assert "2" in proposals[0].rationale
 
 
-def test_single_undirected_edge() -> None:
+def test_single_undirected_edge(mock_user_context) -> None:
     """
     Test minimal case: A -- B.
     Both degree 1. Should pick A.
@@ -209,7 +209,7 @@ def test_single_undirected_edge() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert len(proposals) == 1
     assert proposals[0].target == "A"
     assert "1" in proposals[0].rationale

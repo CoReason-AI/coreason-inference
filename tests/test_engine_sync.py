@@ -9,7 +9,7 @@ from coreason_inference.engine import InferenceEngine
 from coreason_inference.schema import InterventionResult, RefutationStatus
 
 
-def test_sync_facade_call() -> None:
+def test_sync_facade_call(mock_user_context) -> None:
     """Explicitly verify that InferenceEngine facade calls operate synchronously via anyio.run."""
     engine = InferenceEngine()
     engine.augmented_data = pd.DataFrame({"X1": [1], "T": [0], "Y": [1]})
@@ -29,14 +29,14 @@ def test_sync_facade_call() -> None:
         instance.estimate_effect.return_value = mock_result
 
         # This call should block and return result, not coroutine
-        result = engine.estimate_effect("T", "Y", ["X1"])
+        result = engine.estimate_effect("T", "Y", ["X1"], context=mock_user_context)
 
         assert result == mock_result
         # Ensure it was called
         instance.estimate_effect.assert_called_once()
 
 
-def test_sync_facade_coverage() -> None:
+def test_sync_facade_coverage(mock_user_context) -> None:
     """Cover missing lines in Sync Facade (Context Manager and Getters)."""
     # 459, 462: Context Manager
     with InferenceEngine() as engine:

@@ -7,7 +7,7 @@ import pytest
 from coreason_inference.analysis.estimator import CausalEstimator
 
 
-def test_estimator_cate_extraction_failure() -> None:
+def test_estimator_cate_extraction_failure(mock_user_context) -> None:
     """
     Test that cate_estimates are None if extraction fails.
     """
@@ -30,13 +30,13 @@ def test_estimator_cate_extraction_failure() -> None:
         with patch("dowhy.CausalModel.identify_effect"), patch("dowhy.CausalModel.refute_estimate") as mock_refute:
             mock_refute.return_value.refutation_result = {"is_statistically_significant": False, "p_value": 0.5}
 
-            result = estimator.estimate_effect("T", "Y", ["X"], method="forest")
+            result = estimator.estimate_effect("T", "Y", ["X"], method="forest", context=mock_user_context)
 
             assert result.cate_estimates is None
             assert result.counterfactual_outcome == 1.0
 
 
-def test_estimator_confidence_interval_array_handling() -> None:
+def test_estimator_confidence_interval_array_handling(mock_user_context) -> None:
     """
     Test handling of array-like confidence intervals (taking mean).
     """
@@ -54,14 +54,14 @@ def test_estimator_confidence_interval_array_handling() -> None:
         with patch("dowhy.CausalModel.identify_effect"), patch("dowhy.CausalModel.refute_estimate") as mock_refute:
             mock_refute.return_value.refutation_result = {"is_statistically_significant": False, "p_value": 0.5}
 
-            result = estimator.estimate_effect("T", "Y", ["X"])
+            result = estimator.estimate_effect("T", "Y", ["X"], context=mock_user_context)
 
             # Should be mean: low=(0.8+0.9)/2=0.85, high=(1.1+1.2)/2=1.15
             assert pytest.approx(result.confidence_interval[0]) == 0.85
             assert pytest.approx(result.confidence_interval[1]) == 1.15
 
 
-def test_estimator_confidence_interval_exception() -> None:
+def test_estimator_confidence_interval_exception(mock_user_context) -> None:
     """
     Test fallback when CI extraction raises exception.
     """
@@ -83,7 +83,7 @@ def test_estimator_confidence_interval_exception() -> None:
         ):
             mock_refute.return_value.refutation_result = {"is_statistically_significant": False, "p_value": 0.5}
 
-            result = estimator.estimate_effect("T", "Y", ["X"])
+            result = estimator.estimate_effect("T", "Y", ["X"], context=mock_user_context)
 
             # Should fallback to (effect, effect)
             assert result.confidence_interval == (1.0, 1.0)

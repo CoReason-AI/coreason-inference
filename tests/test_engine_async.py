@@ -23,7 +23,7 @@ async def async_engine() -> InferenceEngineAsync:
 
 
 @pytest.mark.asyncio
-async def test_analyze_heterogeneity_async(async_engine: InferenceEngineAsync) -> None:
+async def test_analyze_heterogeneity_async(async_engine: InferenceEngineAsync, mock_user_context) -> None:
     mock_result = InterventionResult(
         patient_id="POPULATION_ATE",
         intervention="do(T)",
@@ -37,7 +37,7 @@ async def test_analyze_heterogeneity_async(async_engine: InferenceEngineAsync) -
         instance = MockEstimator.return_value
         instance.estimate_effect.return_value = mock_result
 
-        result = await async_engine.analyze_heterogeneity("T", "Y", ["X1", "X2"])
+        result = await async_engine.analyze_heterogeneity("T", "Y", ["X1", "X2"], context=mock_user_context)
 
         assert result == mock_result
         assert async_engine.cate_estimates is not None
@@ -45,7 +45,7 @@ async def test_analyze_heterogeneity_async(async_engine: InferenceEngineAsync) -
 
 
 @pytest.mark.asyncio
-async def test_context_manager() -> None:
+async def test_context_manager(mock_user_context) -> None:
     async with InferenceEngineAsync() as engine:
         assert engine._client is not None
         assert not engine._client.is_closed
@@ -53,7 +53,7 @@ async def test_context_manager() -> None:
 
 
 @pytest.mark.asyncio
-async def test_analyze_pipeline_mocked() -> None:
+async def test_analyze_pipeline_mocked(mock_user_context) -> None:
     """Test the full analyze pipeline with mocked sub-engines to avoid heavy computation."""
     # Setup mocks
     dynamics_engine = MagicMock()
@@ -100,7 +100,11 @@ async def test_analyze_pipeline_mocked() -> None:
         )
 
         result = await engine.analyze(
-            data=data, time_col="time", variable_cols=["A", "B"], estimate_effect_for=("A", "B")
+            data=data,
+            time_col="time",
+            variable_cols=["A", "B"],
+            estimate_effect_for=("A", "B"),
+            context=mock_user_context,
         )
 
         # Assertions
@@ -122,7 +126,7 @@ async def test_analyze_pipeline_mocked() -> None:
 
 
 @pytest.mark.asyncio
-async def test_error_handling_in_async_analyze() -> None:
+async def test_error_handling_in_async_analyze(mock_user_context) -> None:
     """Test error handling blocks in analyze and run_virtual_trial."""
     engine = InferenceEngineAsync()
     data = pd.DataFrame({"time": [0, 1], "A": [1, 2]})
@@ -149,11 +153,11 @@ async def test_error_handling_in_async_analyze() -> None:
 
     with patch("coreason_inference.engine.CausalEstimator", side_effect=BrokenEstimator):
         # This should catch exception and log error, not raise
-        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"), context=mock_user_context)
 
 
 @pytest.mark.asyncio
-async def test_analyze_missing_estimator() -> None:
+async def test_analyze_missing_estimator(mock_user_context) -> None:
     """Test coverage for line 193: raise ValueError('Estimator not initialized')."""
     engine = InferenceEngineAsync()
     engine.dynamics_engine = MagicMock()
@@ -175,11 +179,11 @@ async def test_analyze_missing_estimator() -> None:
         mock_prop.return_value = None
 
         # Should log error about "Estimator not initialized"
-        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"))
+        await engine.analyze(data, "time", ["A"], estimate_effect_for=("A", "A"), context=mock_user_context)
 
 
 @pytest.mark.asyncio
-async def test_error_handling_in_virtual_trial() -> None:
+async def test_error_handling_in_virtual_trial(mock_user_context) -> None:
     """Test error handling in run_virtual_trial."""
     engine = InferenceEngineAsync()
     engine.latent_miner.model = MagicMock()
@@ -193,14 +197,18 @@ async def test_error_handling_in_virtual_trial() -> None:
         patch.object(engine.virtual_simulator, "simulate_trial", side_effect=Exception("Sim Boom")),
     ):
         result = await engine.run_virtual_trial(
-            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0), "T", "Y", []
+            OptimizationOutput(new_criteria=[], original_pos=0, optimized_pos=0),
+            "T",
+            "Y",
+            [],
+            context=mock_user_context,
         )
 
         assert result.simulation_result is None
         assert result.cohort_size == 1
 
 
-def test_sync_facade_setters() -> None:
+def test_sync_facade_setters(mock_user_context) -> None:
     """Test setters in Sync Facade to cover lines 459, 462, 470, 486, 514, 518."""
     engine = InferenceEngine()
 

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from coreason_identity.models import UserContext
 from dowhy import CausalModel
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
@@ -51,6 +52,8 @@ class CausalEstimator:
         method: str = METHOD_LINEAR,
         num_simulations: int = 10,
         target_patient_id: Optional[str] = None,
+        *,
+        context: UserContext,
     ) -> InterventionResult:
         """Estimate the causal effect of `treatment` on `outcome` controlling for `confounders`.
 
@@ -66,6 +69,7 @@ class CausalEstimator:
             method: The estimation method. "linear" for LinearDML, "forest" for CausalForestDML.
             num_simulations: Number of simulations for placebo refutation.
             target_patient_id: Optional ID of a specific patient to retrieve individual CATE for.
+            context: The user identity context.
 
         Returns:
             InterventionResult: The estimated effect (ATE or individual CATE) and optional CATE distribution.
@@ -73,6 +77,10 @@ class CausalEstimator:
         Raises:
             ValueError: If estimation parameters are invalid or data is missing.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        logger.debug("Estimating effect", user_id=context.sub, method=method)
         logger.info(f"Starting causal estimation: Treatment='{treatment}', Outcome='{outcome}', Method='{method}'")
 
         # 1. Define & Fit Model

@@ -17,7 +17,7 @@ from coreason_inference.analysis.estimator import CausalEstimator
 from coreason_inference.schema import RefutationStatus
 
 
-def test_estimate_effect_refutation_failure_invalidates_result() -> None:
+def test_estimate_effect_refutation_failure_invalidates_result(mock_user_context) -> None:
     """
     Test that the estimator correctly invalidates the result (returns None)
     when the refutation fails (is statistically significant).
@@ -57,7 +57,7 @@ def test_estimate_effect_refutation_failure_invalidates_result() -> None:
         mock_instance.refute_estimate.return_value = mock_refutation
 
         # 3. Call Method
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"])
+        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], context=mock_user_context)
 
         # 4. Assertions
         assert result.refutation_status == RefutationStatus.FAILED

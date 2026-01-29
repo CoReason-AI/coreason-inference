@@ -5,7 +5,7 @@ import pytest
 from coreason_inference.analysis.estimator import METHOD_FOREST, CausalEstimator
 
 
-def test_estimator_personalized_inference() -> None:
+def test_estimator_personalized_inference(mock_user_context) -> None:
     """
     Test retrieving a specific patient's CATE.
     """
@@ -38,6 +38,7 @@ def test_estimator_personalized_inference() -> None:
         patient_id_col="patient_id",
         method=METHOD_FOREST,
         target_patient_id=target_pid,
+        context=mock_user_context,
     )
 
     assert result.patient_id == target_pid
@@ -56,6 +57,7 @@ def test_estimator_personalized_inference() -> None:
         patient_id_col="patient_id",
         method=METHOD_FOREST,
         target_patient_id=target_pid_2,
+        context=mock_user_context,
     )
 
     assert result_2.patient_id == target_pid_2
@@ -63,7 +65,7 @@ def test_estimator_personalized_inference() -> None:
     assert result_2.counterfactual_outcome < -5.0
 
 
-def test_estimator_personalized_inference_missing_id() -> None:
+def test_estimator_personalized_inference_missing_id(mock_user_context) -> None:
     """
     Test error handling when target ID is missing.
     """
@@ -79,4 +81,6 @@ def test_estimator_personalized_inference_missing_id() -> None:
     estimator = CausalEstimator(data)
 
     with pytest.raises(ValueError, match="not found"):
-        estimator.estimate_effect("T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="C")
+        estimator.estimate_effect(
+            "T", "Y", ["X"], method=METHOD_FOREST, target_patient_id="C", context=mock_user_context
+        )

@@ -40,7 +40,7 @@ def test_active_scientist_fit(synthetic_data: pd.DataFrame) -> None:
     assert scientist.cpdag.shape == (3, 3)
 
 
-def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> None:
+def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame, mock_user_context) -> None:
     """
     Test the intelligent experiment selection.
     In a chain A - B - C where edges are undirected.
@@ -86,7 +86,7 @@ def test_active_scientist_proposals_heuristic(synthetic_data: pd.DataFrame) -> N
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
 
     assert isinstance(proposals, list)
     assert len(proposals) == 1
@@ -137,10 +137,10 @@ def test_empty_data_error() -> None:
         scientist.fit(pd.DataFrame())
 
 
-def test_propose_without_fit() -> None:
+def test_propose_without_fit(mock_user_context) -> None:
     scientist = ActiveScientist()
     with pytest.raises(ValueError, match="Model not fitted"):
-        scientist.propose_experiments()
+        scientist.propose_experiments(context=mock_user_context)
 
 
 def test_pc_algorithm_failure(synthetic_data: pd.DataFrame) -> None:
@@ -151,7 +151,7 @@ def test_pc_algorithm_failure(synthetic_data: pd.DataFrame) -> None:
             scientist.fit(synthetic_data)
 
 
-def test_no_undirected_edges() -> None:
+def test_no_undirected_edges(mock_user_context) -> None:
     """Test case where graph is fully directed or empty, should return empty list."""
     scientist = ActiveScientist()
 
@@ -169,11 +169,11 @@ def test_no_undirected_edges() -> None:
     scientist.cpdag = adj
     scientist.labels = ["A", "B", "C"]
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert proposals == []
 
 
-def test_star_graph_heuristic() -> None:
+def test_star_graph_heuristic(mock_user_context) -> None:
     """
     Test a Star graph configuration:
          A
@@ -211,7 +211,7 @@ def test_star_graph_heuristic() -> None:
     scientist.cpdag = adj
     scientist.labels = labels
 
-    proposals = scientist.propose_experiments()
+    proposals = scientist.propose_experiments(context=mock_user_context)
     assert len(proposals) == 1
 
     # Check rationale for gain count

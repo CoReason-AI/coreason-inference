@@ -33,13 +33,13 @@ class TestEngineExplainability:
             {"feature_1": [1.0, 2.0, 3.0, 4.0, 5.0], "feature_2": [0.5, 1.5, 2.5, 3.5, 4.5], "time": [0, 1, 2, 3, 4]}
         )
 
-    def test_explain_latents_without_analyze(self, engine: InferenceEngine) -> None:
+    def test_explain_latents_without_analyze(self, engine: InferenceEngine, mock_user_context) -> None:
         """Test that calling explain_latents before analyze raises ValueError."""
         with pytest.raises(ValueError, match="Pipeline not run"):
             engine.explain_latents()
 
     def test_explain_latents_flow(
-        self, engine: InferenceEngine, mock_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch
+        self, engine: InferenceEngine, mock_data: pd.DataFrame, monkeypatch: pytest.MonkeyPatch, mock_user_context
     ) -> None:
         """
         Test the successful flow of explain_latents.
@@ -75,7 +75,9 @@ class TestEngineExplainability:
         monkeypatch.setattr(engine.active_scientist, "propose_experiments", MagicMock(return_value=[]))
 
         # Run analyze
-        engine.analyze(data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"])
+        engine.analyze(
+            data=mock_data, time_col="time", variable_cols=["feature_1", "feature_2"], context=mock_user_context
+        )
 
         # Call explain_latents
         explanation = engine.explain_latents(background_samples=50)
@@ -108,7 +110,7 @@ class TestEngineExplainability:
         assert passed_samples == 50
         assert engine._latent_features == ["feature_1", "feature_2"]
 
-    def test_explain_latents_missing_data(self, engine: InferenceEngine) -> None:
+    def test_explain_latents_missing_data(self, engine: InferenceEngine, mock_user_context) -> None:
         """Test error when model is present but data is somehow missing (defensive)."""
         engine.latent_miner.model = MagicMock()  # Simulate fitted model
         engine.augmented_data = None
@@ -116,7 +118,9 @@ class TestEngineExplainability:
         with pytest.raises(ValueError, match="Data not available"):
             engine.explain_latents()
 
-    def test_explain_latents_column_mismatch(self, engine: InferenceEngine, mock_data: pd.DataFrame) -> None:
+    def test_explain_latents_column_mismatch(
+        self, engine: InferenceEngine, mock_data: pd.DataFrame, mock_user_context
+    ) -> None:
         """Test error when stored columns are missing from augmented data."""
         # Set up state manually
         engine.latent_miner.model = MagicMock()

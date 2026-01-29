@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from causallearn.graph.Endpoint import Endpoint
 from causallearn.search.ConstraintBased.PC import pc
+from coreason_identity.models import UserContext
 
 from coreason_inference.schema import ExperimentProposal
 from coreason_inference.utils.logger import logger
@@ -66,7 +67,7 @@ class ActiveScientist:
         # matrix[i, j] = Endpoint at j from i
         self.cpdag = cg.G.graph
 
-    def propose_experiments(self) -> List[ExperimentProposal]:
+    def propose_experiments(self, *, context: UserContext) -> List[ExperimentProposal]:
         """Identifies undirected edges and proposes the BEST experiment.
 
         Uses the Max-Degree Heuristic to select the node with the highest number
@@ -78,6 +79,11 @@ class ActiveScientist:
         Raises:
             ValueError: If the model has not been fitted via `fit()`.
         """
+        if context is None:
+            raise ValueError("UserContext is required.")
+
+        logger.debug("Proposing experiments", user_id=context.sub)
+
         if self.cpdag is None:
             raise ValueError("Model not fitted. Call fit() first.")
 

@@ -5,7 +5,7 @@ import pytest
 from coreason_inference.analysis.estimator import CausalEstimator
 
 
-def test_heterogeneity_binary_treatment_complex() -> None:
+def test_heterogeneity_binary_treatment_complex(mock_user_context) -> None:
     """
     Test CausalForestDML with a binary treatment and complex heterogeneity.
     Scenario: Treatment T works (Y increases) only if Age > 50 AND Biomarker < 0.
@@ -38,7 +38,12 @@ def test_heterogeneity_binary_treatment_complex() -> None:
 
     estimator = CausalEstimator(data)
     result = estimator.estimate_effect(
-        treatment="T", outcome="Y", confounders=["Age", "Biomarker", "Noise"], treatment_is_binary=True, method="forest"
+        treatment="T",
+        outcome="Y",
+        confounders=["Age", "Biomarker", "Noise"],
+        treatment_is_binary=True,
+        method="forest",
+        context=mock_user_context,
     )
 
     assert result.cate_estimates is not None
@@ -59,7 +64,7 @@ def test_heterogeneity_binary_treatment_complex() -> None:
     assert (mean_responders - mean_non_responders) > 2.0
 
 
-def test_heterogeneity_empty_confounders_error() -> None:
+def test_heterogeneity_empty_confounders_error(mock_user_context) -> None:
     """
     Edge Case: Calling method="forest" with no confounders.
     Causal Forest requires at least one variable to split on.
@@ -79,10 +84,11 @@ def test_heterogeneity_empty_confounders_error() -> None:
             outcome="Y",
             confounders=[],  # Empty
             method="forest",
+            context=mock_user_context,
         )
 
 
-def test_heterogeneity_small_data() -> None:
+def test_heterogeneity_small_data(mock_user_context) -> None:
     """
     Edge Case: Extremely small dataset (N=10).
     Forest might struggle or warn, but shouldn't crash ungracefully?
@@ -97,7 +103,9 @@ def test_heterogeneity_small_data() -> None:
 
     # Should run without crashing, even if results are junk
     try:
-        result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X"], method="forest")
+        result = estimator.estimate_effect(
+            treatment="T", outcome="Y", confounders=["X"], method="forest", context=mock_user_context
+        )
         # Result might be valid object
         assert result.refutation_status is not None
         assert result.cate_estimates is not None
@@ -109,7 +117,7 @@ def test_heterogeneity_small_data() -> None:
         pytest.fail(f"Small data caused crash: {e}")
 
 
-def test_heterogeneity_collinear_features() -> None:
+def test_heterogeneity_collinear_features(mock_user_context) -> None:
     """
     Complex Scenario: Perfectly collinear confounders.
     X1 = X2.
@@ -125,7 +133,9 @@ def test_heterogeneity_collinear_features() -> None:
 
     estimator = CausalEstimator(data)
 
-    result = estimator.estimate_effect(treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest")
+    result = estimator.estimate_effect(
+        treatment="T", outcome="Y", confounders=["X1", "X2"], method="forest", context=mock_user_context
+    )
 
     assert result.cate_estimates is not None
     # Forest handles collinearity well (just picks one split).
